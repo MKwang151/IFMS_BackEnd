@@ -1,0 +1,69 @@
+@startmindmap
+' --- CẤU HÌNH GIAO DIỆN ---
+skinparam linestyle ortho
+skinparam shadowing false
+skinparam BackgroundColor white
+skinparam NodeBackgroundColor #F5F5F5
+skinparam NodeBorderColor #333333
+skinparam FontName Arial
+
+' --- MÀU SẮC ---
+<style>
+mindmapDiagram {
+  .root { BackgroundColor #E67E22; FontColor white; FontSize 16; FontStyle bold }
+  .inherit { BackgroundColor #95A5A6; FontColor white }
+  .project { BackgroundColor #2ECC71; FontColor white }
+  .approval { BackgroundColor #E74C3C; FontColor white }
+  .dept { BackgroundColor #34495E; FontColor white }
+}
+</style>
+
+* <&people> **ROLE: MANAGER**\n(Trưởng phòng)
+
+' 1. KẾ THỪA
+left side
+** <&person> **Kế thừa quyền Employee** <<inherit>>
+***_ Đăng nhập & Bảo mật (PIN)
+***_ Ví cá nhân (Nạp/Rút)
+***_ Tạo yêu cầu cá nhân
+***_ Hồ sơ cá nhân
+
+' 2. QUẢN LÝ ĐỀ ÁN
+right side
+** <&briefcase> **Quản lý Đề án (Project)** <<project>>
+*** Tạo Đề án mới
+****_ Tên, Mô tả, Deadline
+****_ **Cấp vốn (Allocate Budget)**
+*****_ Trừ từ Quỹ Phòng -> Quỹ Dự án
+*** Quản lý Thành viên
+****_ Thêm nhân viên vào dự án
+****_ Xóa nhân viên
+*** Điều chỉnh Ngân sách
+****_ Cấp thêm (Top-up)
+****_ Thu hồi (Revoke)
+*** Đóng Đề án (Close)
+
+' 3. XÉT DUYỆT
+right side
+** <&check> **Xét duyệt (Approval)** <<approval>>
+*** Danh sách Chờ duyệt
+****_ Cảnh báo phiếu giá trị cao
+*** Xem chi tiết
+****_ Soi chứng từ/Hóa đơn
+*** **Thao tác Duyệt**
+****_ Check Hạn mức Manager
+****_ < Hạn mức: Chuyển Kế toán
+****_ > Hạn mức: Chuyển Admin
+*** **Thao tác Từ chối**
+****_ Nhập lý do (Bắt buộc)
+
+' 4. QUẢN TRỊ PHÒNG BAN
+right side
+** <&graph> **Quản trị Phòng ban** <<dept>>
+*** Dashboard Phòng
+****_ Tổng ngân sách (Admin cấp)
+****_ Tiền khả dụng (Chưa cấp cho DA)
+*** Báo cáo
+****_ Biểu đồ chi tiêu các dự án
+
+@endmindmap
