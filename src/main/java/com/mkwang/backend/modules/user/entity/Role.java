@@ -1,6 +1,6 @@
 package com.mkwang.backend.modules.user.entity;
 
-import com.mkwang.backend.common.domain.BaseEntity;
+import com.mkwang.backend.common.base.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 

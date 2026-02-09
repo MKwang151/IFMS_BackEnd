@@ -1,9 +1,15 @@
 package com.mkwang.backend.modules.user.entity;
 
-import com.mkwang.backend.common.domain.BaseEntity;
+import com.mkwang.backend.common.base.BaseEntity;
+import com.mkwang.backend.modules.organization.entity.Department;
 import jakarta.persistence.*;
 import lombok.*;
 
+/**
+ * User entity - Core authentication and identity entity.
+ * Has relationships with Role (ManyToOne), Department (ManyToOne),
+ * UserProfile (OneToOne), UserSecuritySettings (OneToOne).
+ */
 @Entity
 @Table(name = "users")
 @Getter
@@ -23,16 +29,33 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private String password;
 
-    @Column(name = "first_name")
-    private String firstName;
+    @Column(name = "full_name")
+    private String fullName;
 
-    @Column(name = "last_name")
-    private String lastName;
+    @Column(name = "is_first_login", nullable = false)
+    @Builder.Default
+    private Boolean isFirstLogin = true;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "role_id", nullable = false)
     private Role role;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_id")
+    private Department department;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
+    private UserStatus status = UserStatus.ACTIVE;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private UserProfile profile;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private UserSecuritySettings securitySettings;
+
+    // Spring Security fields
     @Column(nullable = false)
     @Builder.Default
     private boolean enabled = true;
@@ -49,10 +72,10 @@ public class User extends BaseEntity {
     @Builder.Default
     private boolean credentialsNonExpired = true;
 
-    public String getFullName() {
-        if (firstName == null && lastName == null) {
-            return email;
-        }
-        return (firstName != null ? firstName : "") + " " + (lastName != null ? lastName : "");
+    /**
+     * Check if user account is active
+     */
+    public boolean isActive() {
+        return status == UserStatus.ACTIVE && enabled && accountNonLocked;
     }
 }
