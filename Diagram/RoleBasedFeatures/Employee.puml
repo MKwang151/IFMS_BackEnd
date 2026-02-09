@@ -18,7 +18,7 @@ mindmapDiagram {
 }
 </style>
 
-* <&aperture> **SME Internal Wallet System**\n(Role Employee - Final)
+* <&aperture> **SME Internal Wallet System**\n(Role Employee - Final Updated)
 
 ' --- NHÁNH CHÍNH ---
 ** <&person> **ROLE: EMPLOYEE**\n(Nhân viên)
@@ -40,28 +40,33 @@ mindmapDiagram {
 *****_ Kết quả: Thành công/Chờ duyệt
 **** Lịch sử Giao dịch
 
-' 3. LƯƠNG (NEW)
+' 3. LƯƠNG & THU NHẬP
 *** <&spreadsheet> **Lương & Thu nhập** <<payroll>>
 **** Danh sách Kỳ lương
-*****_ Tháng/Năm
-*****_ Số tiền thực nhận
+*****_ Tháng/Năm & Thực nhận
 **** **Chi tiết Phiếu lương**
-*****_ Lương cứng & Phụ cấp
-*****_ Thưởng & Phạt
+*****_ Lương/Thưởng/Phạt
 *****_ Trừ nợ Tạm ứng
 **** Tải Phiếu lương (PDF)
 
-' 4. QUẢN LÝ YÊU CẦU
+' 4. QUẢN LÝ YÊU CẦU (UPDATED)
 *** <&document> **Quản lý Yêu cầu** <<request>>
-**** Tạo Yêu cầu (Chi/Ứng)
-*****_ Chọn Đề án & Upload ảnh
+**** **Tạo Yêu cầu (Chi/Ứng)**
+*****_ Chọn Đề án (Chỉ hiện Active)
+*****_ **Xem Giai đoạn (Phase) hiện tại**
+*****_ Check hạn mức khả dụng của Phase
+*****_ Upload ảnh chứng từ
 **** Tạo Hoàn ứng (Reimbursement)
+*****_ Chọn phiếu Ứng cũ
 *****_ Trigger Auto-Netting
 **** Theo dõi Trạng thái
+*****_ Pending / Approved / Rejected
+*****_ **Xem Lý do Từ chối**
 
 ' 5. THÔNG BÁO
 *** <&bell> **Thông báo** <<noti>>
 **** Biến động số dư
+**** Kết quả duyệt Request
 **** **"Ting ting" Lương về**
 
 @endmindmap
