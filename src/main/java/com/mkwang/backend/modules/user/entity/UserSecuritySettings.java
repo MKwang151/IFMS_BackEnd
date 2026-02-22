@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.user.entity;
 
+import com.mkwang.backend.common.base.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -16,7 +17,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserSecuritySettings {
+public class UserSecuritySettings extends BaseEntity {
 
   @Id
   @Column(name = "user_id")
