@@ -12,10 +12,6 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Request entity - Represents expense/advance/reimbursement requests.
- * Core entity for the approval workflow.
- */
 @Entity
 @Table(name = "requests")
 @Getter
@@ -51,9 +47,18 @@ public class Request extends BaseEntity {
   @Column(name = "approved_amount", precision = 19, scale = 2)
   private BigDecimal approvedAmount;
 
-  @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "proof_file_id")
-  private FileStorage proofFile;
+  // --- CẬP NHẬT: THAY ĐỔI TỪ SINGLE FILE SANG LIST FILES ---
+
+  @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+  @JoinTable(
+          name = "request_attachments", // Tên bảng trung gian
+          joinColumns = @JoinColumn(name = "request_id"), // Khóa ngoại trỏ về Request
+          inverseJoinColumns = @JoinColumn(name = "file_id") // Khóa ngoại trỏ về FileStorage
+  )
+  @Builder.Default
+  private List<FileStorage> attachments = new ArrayList<>();
+
+  // -----------------------------------------------------------
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 20)
@@ -70,23 +75,15 @@ public class Request extends BaseEntity {
   @Builder.Default
   private List<RequestHistory> histories = new ArrayList<>();
 
-  /**
-   * Check if request can be cancelled by requester
-   */
+  // Logic nghiệp vụ
   public boolean isCancellable() {
     return status == RequestStatus.PENDING_MANAGER || status == RequestStatus.PENDING_ADMIN;
   }
 
-  /**
-   * Check if request is awaiting approval
-   */
   public boolean isPending() {
     return status == RequestStatus.PENDING_MANAGER || status == RequestStatus.PENDING_ADMIN;
   }
 
-  /**
-   * Check if request requires proof file (EXPENSE and REIMBURSE types)
-   */
   public boolean requiresProof() {
     return type == RequestType.EXPENSE || type == RequestType.REIMBURSE;
   }
