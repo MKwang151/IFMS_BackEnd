@@ -12,7 +12,9 @@ import java.math.BigDecimal;
  * Each department has a manager and budget allocation.
  */
 @Entity
-@Table(name = "departments")
+@Table(name = "departments", indexes = {
+    @Index(name = "idx_departments_code", columnList = "code")
+})
 @Getter
 @Setter
 @Builder
@@ -34,11 +36,15 @@ public class Department extends BaseEntity {
   @JoinColumn(name = "manager_id")
   private User manager;
 
-  @Column(name = "budget_quota", precision = 19, scale = 2)
+  // TỔNG NGÂN SÁCH ĐÃ NHẬN: Bằng tổng (Sum) của tất cả project_budget thuộc phòng này.
+  // Cột này chỉ TĂNG lên mỗi khi Admin duyệt Top-up cho một dự án của phòng.
+  @Column(name = "total_project_quota", precision = 19, scale = 2)
   @Builder.Default
-  private BigDecimal budgetQuota = BigDecimal.ZERO;
+  private BigDecimal totalProjectQuota = BigDecimal.ZERO;
 
-  @Column(name = "available_balance", precision = 19, scale = 2)
+  // TỔNG TIỀN CÒN LẠI: Bằng tổng tiền chưa tiêu của tất cả các dự án thuộc phòng.
+  // Cột này TĂNG khi được Top-up, và GIẢM khi có một nhân viên trong phòng được duyệt chi tiền.
+  @Column(name = "total_available_balance", precision = 19, scale = 2)
   @Builder.Default
-  private BigDecimal availableBalance = BigDecimal.ZERO;
+  private BigDecimal totalAvailableBalance = BigDecimal.ZERO;
 }

@@ -15,7 +15,9 @@ import java.util.List;
  * Budget is allocated per Phase, not directly from project.
  */
 @Entity
-@Table(name = "projects")
+@Table(name = "projects", indexes = {
+    @Index(name = "idx_projects_project_code", columnList = "project_code")
+})
 @Getter
 @Setter
 @Builder
@@ -26,6 +28,14 @@ public class Project extends BaseEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  /**
+   * Human-readable project identifier (Cost Center).
+   * Format: PRJ-{DEPT}-{YEAR} e.g. PRJ-ERP-2026
+   * Auto-generated at application layer before persistence.
+   */
+  @Column(name = "project_code", nullable = false, unique = true, length = 30)
+  private String projectCode;
 
   @Column(nullable = false)
   private String name;

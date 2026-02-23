@@ -12,7 +12,9 @@ import java.math.BigDecimal;
  * Once created, transactions should NEVER be updated or deleted.
  */
 @Entity
-@Table(name = "transactions")
+@Table(name = "transactions", indexes = {
+    @Index(name = "idx_transactions_transaction_code", columnList = "transaction_code")
+})
 @Getter
 @Setter
 @Builder
@@ -23,6 +25,15 @@ public class Transaction extends BaseEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  /**
+   * Internal system transaction code (distinct from payment gateway's payment_ref).
+   * Used for statement lookup and auditing.
+   * Format: TXN-{RANDOM_HEX} e.g. TXN-8829145A
+   * Auto-generated at application layer before persistence.
+   */
+  @Column(name = "transaction_code", nullable = false, unique = true, length = 30)
+  private String transactionCode;
 
   // LƯU Ý: Không dùng unique=true vì các giao dịch nội bộ sẽ có paymentRef = null
   @Column(name = "payment_ref", length = 100)

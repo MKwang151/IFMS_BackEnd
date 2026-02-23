@@ -34,6 +34,11 @@ public class RequestHistory extends BaseEntity {
   @Column(name = "action", nullable = false, length = 20)
   private RequestAction action;
 
-  @Column(name = "comment", columnDefinition = "TEXT")
+  @Enumerated(EnumType.STRING)
+  @Column(name = "status_after_action", nullable = false, length = 20)
+  @Builder.Default
+  private RequestHistoryStatus statusAfterAction = RequestHistoryStatus.PENDING;
+
+  @Column(name = "comment", length = 500)
   private String comment;
 }

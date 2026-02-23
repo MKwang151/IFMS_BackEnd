@@ -13,7 +13,9 @@ import java.util.List;
  * Contains all payslips for employees in this period.
  */
 @Entity
-@Table(name = "payroll_periods")
+@Table(name = "payroll_periods", indexes = {
+    @Index(name = "idx_payroll_periods_period_code", columnList = "period_code")
+})
 @Getter
 @Setter
 @Builder
@@ -24,6 +26,14 @@ public class PayrollPeriod extends BaseEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  /**
+   * Human-readable payroll period code.
+   * Format: PR-{YEAR}-{MM} e.g. PR-2026-02
+   * Auto-generated at application layer before persistence.
+   */
+  @Column(name = "period_code", nullable = false, unique = true, length = 30)
+  private String periodCode;
 
   @Column(nullable = false)
   private String name; // e.g., "Lương T10/2025"

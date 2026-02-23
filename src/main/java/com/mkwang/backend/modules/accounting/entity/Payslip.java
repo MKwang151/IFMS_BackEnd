@@ -6,13 +6,17 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * Payslip entity - Individual employee payslip for a payroll period.
  * Contains salary breakdown and auto-netting calculation.
  */
 @Entity
-@Table(name = "payslips")
+@Table(name = "payslips", indexes = {
+    @Index(name = "idx_payslips_payslip_code", columnList = "payslip_code")
+})
 @Getter
 @Setter
 @Builder
@@ -23,6 +27,14 @@ public class Payslip extends BaseEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  /**
+   * Human-readable individual payslip code. Used as document reference when exporting PDF.
+   * Format: PSL-{EMP_CODE}-{MMYY} e.g. PSL-EMP001-0226
+   * Auto-generated at application layer before persistence.
+   */
+  @Column(name = "payslip_code", nullable = false, unique = true, length = 30)
+  private String payslipCode;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "period_id", nullable = false)
@@ -40,6 +52,10 @@ public class Payslip extends BaseEntity {
   @Builder.Default
   private BigDecimal bonus = BigDecimal.ZERO;
 
+  @Column(name = "allowance", precision = 19, scale = 2)
+  @Builder.Default
+  private BigDecimal allowance = BigDecimal.ZERO;
+
   @Column(name = "deduction", precision = 19, scale = 2)
   @Builder.Default
   private BigDecimal deduction = BigDecimal.ZERO;
@@ -56,6 +72,9 @@ public class Payslip extends BaseEntity {
   @Column(name = "status", nullable = false, length = 20)
   @Builder.Default
   private PayslipStatus status = PayslipStatus.DRAFT;
+
+  @Column(name = "payment_date")
+  private LocalDateTime paymentDate;
 
   /**
    * Calculate gross salary (before debt deduction)

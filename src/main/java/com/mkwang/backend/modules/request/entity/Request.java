@@ -13,7 +13,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "requests")
+@Table(name = "requests", indexes = {
+    @Index(name = "idx_requests_request_code", columnList = "request_code")
+})
 @Getter
 @Setter
 @Builder
@@ -24,6 +26,14 @@ public class Request extends BaseEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  /**
+   * Human-readable request / document code. Used by accounting for reconciliation and PDF printing.
+   * Format: REQ-{TYPE}-{MMYY}-{SEQ} e.g. REQ-IT-2602-001
+   * Auto-generated at application layer before persistence.
+   */
+  @Column(name = "request_code", nullable = false, unique = true, length = 30)
+  private String requestCode;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "requester_id", nullable = false)

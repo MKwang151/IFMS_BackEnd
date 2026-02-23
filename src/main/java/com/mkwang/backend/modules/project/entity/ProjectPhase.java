@@ -13,7 +13,9 @@ import java.time.LocalDate;
  * phase budget.
  */
 @Entity
-@Table(name = "project_phases")
+@Table(name = "project_phases", indexes = {
+    @Index(name = "idx_project_phases_phase_code", columnList = "phase_code")
+})
 @Getter
 @Setter
 @Builder
@@ -24,6 +26,14 @@ public class ProjectPhase extends BaseEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  /**
+   * Human-readable phase identifier.
+   * Format: PH-{NAME}-{SEQ} e.g. PH-UIUX-01
+   * Auto-generated at application layer before persistence.
+   */
+  @Column(name = "phase_code", nullable = false, unique = true, length = 30)
+  private String phaseCode;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "project_id", nullable = false)

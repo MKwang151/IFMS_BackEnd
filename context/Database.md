@@ -2,6 +2,16 @@
 
 Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyền động (Dynamic RBAC), Thông tin Ngân hàng, Project Lifecycle, Kỳ lương và các logic kiểm toán.
 
+## ⚠️ IMPLEMENTATION NOTE - Business Codes Auto-Generation
+
+Các trường mã định danh (Business Codes) như `project_code`, `phase_code`, `request_code`, `transaction_code`, `period_code`, và `payslip_code` **PHẢI được auto-generated tại lớp Application Layer (Backend Service)** trước khi lưu vào database, chứ không được delegate cho database triggers. Nguyên do:
+- Đảm bảo tính nhất quán của format mã trên toàn hệ thống
+- Dễ dàng cho Unit Testing và Mock Data
+- Tránh phụ thuộc vào database vendor-specific features
+- Các trường này đều có constraints `UNIQUE` và `NOT NULL`, nên phải đảm bảo giá trị hợp lệ trước persistence.
+
+---
+
 ## 1. MODULE QUẢN LÝ FILE (File Storage - Cloudinary)
 *Dùng để lưu trữ URL và ID của ảnh/tài liệu, tránh lưu trực tiếp vào các bảng nghiệp vụ.*
 
@@ -40,6 +50,9 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 
 ### `user_profiles` (Hồ sơ cá nhân & Ngân hàng)
 * **user_id** (PK, FK): Khóa chính chung với bảng `users`.
+* **job_title** (Varchar): Chức danh công việc (VD: Software Engineer).
+* **employee_code** (Varchar, Unique): Mã nhân viên.
+* **address** (Text): Địa chỉ liên hệ.
 * **phone_number** (Varchar): Số điện thoại.
 * **date_of_birth** (Date): Ngày sinh.
 * **citizen_id** (Varchar): Số CCCD.
@@ -64,9 +77,8 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 * **name** (Varchar): Tên phòng ban.
 * **code** (Varchar, Unique): Mã phòng ban.
 * **manager_id** (FK): Liên kết bảng `users` (Trưởng phòng).
-* **budget_quota** (Decimal): Tổng hạn mức Admin cấp cho phòng.
-* **available_balance** (Decimal): Số tiền khả dụng hiện tại của phòng.
-
+* **total_project_quota** (Decimal): Tổng ngân sách cấp cho phòng ban.
+* **total_available_balance** (Decimal): Ngân sách còn lại (Cập nhật tự động khi duyệt yêu cầu).
 ---
 
 ## 4. MODULE DỰ ÁN (Project Lifecycle)
@@ -74,6 +86,7 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 
 ### `projects`
 * **id** (PK, BigInt, Auto-increment)
+* **project_code** (Varchar, Unique, Not Null): Mã định danh dự án (Cost Center). Format: `PRJ-ERP-2026`. Auto-generated at application layer.
 * **name** (Varchar): Tên dự án.
 * **department_id** (FK): Liên kết bảng `departments`.
 * **manager_id** (FK): Liên kết bảng `users` (PM).
@@ -84,6 +97,7 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 
 ### `project_phases` (Lịch sử Giai đoạn)
 * **id** (PK, BigInt, Auto-increment)
+* **phase_code** (Varchar, Unique, Not Null): Mã định danh giai đoạn dự án. Format: `PH-UIUX-01`. Auto-generated at application layer.
 * **project_id** (FK): Liên kết bảng `projects`.
 * **name** (Varchar): Tên giai đoạn.
 * **budget_limit** (Decimal): Hạn mức vốn cấp riêng cho Phase này.
@@ -105,25 +119,32 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 
 ### `requests`
 * **id** (PK, BigInt, Auto-increment)
+* **request_code** (Varchar, Unique, Not Null): Mã đơn từ / Tờ trình. Mã quan trọng nhất dùng để kế toán đối soát và in PDF. Format: `REQ-IT-2602-001` (Type-Dept-MMYY-Sequence). Auto-generated at application layer.
 * **requester_id** (FK): Người tạo (User).
 * **project_id** (FK): Dự án liên quan.
 * **phase_id** (FK): Giai đoạn liên quan (để tính cost cho Phase).
 * **type** (Enum): ADVANCE (Ứng), EXPENSE (Chi), REIMBURSE (Hoàn ứng).
 * **amount** (Decimal): Số tiền yêu cầu.
 * **approved_amount** (Decimal): Số tiền được duyệt.
-* **proof_file_id** (FK): Liên kết bảng `file_storages` (Ảnh chứng từ).
 * **status** (Enum): PENDING_MANAGER, PENDING_ADMIN, APPROVED, PAID, REJECTED.
 * **reject_reason** (Text): Lý do từ chối.
+* **description** (Text): Mô tả chi tiết lý do chi/ứng tiền.
+
+### `request_attachments` (Bảng trung gian)
+*Lưu trữ mối quan hệ 1-N: Một Request có thể có nhiều File đính kèm (Hóa đơn, PDF, Excel...).*
+* **request_id** (PK, FK): Liên kết bảng `requests`.
+* **file_id** (PK, FK): Liên kết bảng `file_storages`.
 
 ### `request_histories` (Nhật ký duyệt / Audit Log)
 * **id** (PK, BigInt, Auto-increment)
 * **request_id** (FK): Liên kết bảng `requests`.
 * **actor_id** (FK): Người thao tác (Manager/Admin).
 * **action** (Enum): APPROVE, REJECT, ESCALATE.
+* **request_history_status** (Enum):     PENDING, APPROVED, REJECTED, CANCELED  (Snapshot trạng thái của Request sau khi hành động diễn ra).
 * **comment** (Text): Ghi chú kèm theo.
 * **created_at** (Timestamp): Thời gian thao tác.
 
----
+--- 
 
 ## 6. MODULE VÍ ĐIỆN TỬ (Core Wallet)
 *Quản lý số dư và lịch sử giao dịch.*
@@ -136,23 +157,33 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 * **debt_balance** (Decimal): Dư nợ tạm ứng.
 * **version** (BigInt): Optimistic Locking.
 
-### `transactions`
-* **id** (PK, BigInt, Auto-increment)
-* **wallet_id** (FK): Ví phát sinh.
-* **amount** (Decimal): Số tiền (+/-).
-* **type** (Enum): DEPOSIT, WITHDRAW, EXPENSE, SALARY, DEBT.
-* **status** (Enum): SUCCESS, PENDING, FAILED.
-* **ref_request_id** (FK): Liên kết bảng `requests` (Nullable).
-* **description** (Text): Nội dung giao dịch.
-* **created_at** (Timestamp): Thời gian tạo.
+### `transactions` (Master Ledger)
 
----
+Bảng Sổ cái tổng (Ledger) lưu trữ toàn bộ lịch sử biến động số dư của tất cả các ví trong hệ thống. Bảng này tuân thủ nghiêm ngặt nguyên tắc **Append-Only** (Chỉ thêm mới, không bao giờ được UPDATE hay DELETE).
+
+* **id** (PK, BigInt, Auto-increment)
+* **transaction_code** (Varchar, Unique, Not Null): Mã giao dịch nội bộ của hệ thống (phân biệt với `payment_ref` của cổng thanh toán bên thứ 3). Dùng để tra cứu sao kê. Format: `TXN-8829145A`. Auto-generated at application layer.
+* **payment_ref** (Varchar, Nullable): Mã tham chiếu từ cổng thanh toán (VD: `MOMO_100299`, `VNP_...`). *Lưu ý: Không dùng Unique Index vì các giao dịch nội bộ sẽ có giá trị null.*
+* **gateway_provider** (Enum): `PAYOS`, `MOMO`, `VNPAY`, `INTERNAL`. (Xác định nguồn hoặc cổng xử lý giao dịch).
+* **wallet_id** (FK, BigInt): Khóa ngoại trỏ tới bảng `wallets` (Ví Công ty hoặc Ví Nhân viên bị tác động).
+* **amount** (Decimal): Số tiền giao dịch (+/-).
+* 🟢 **balance_after** (Decimal, Not Null): **[MỚI]** Bức ảnh chụp chính xác số dư của `wallet_id` ngay sau khi giao dịch thành công. Dùng để xuất sao kê nhanh chóng.
+* **type** (Enum): `DEPOSIT`, `WITHDRAW`, `EXPENSE`, `SALARY`, `DEBT` (Phân loại tính chất dòng tiền).
+* **status** (Enum): `SUCCESS`, `PENDING`, `FAILED`.
+* 🟢 **reference_type** (Enum): **[MỚI]** Loại chứng từ gốc sinh ra giao dịch này (VD: `REQUEST`, `PAYSLIP`, `SYSTEM_FUND`, `MANUAL_ADJUSTMENT`). *(Thay thế hoàn toàn cho `ref_request_id` cũ)*.
+* 🟢 **reference_id** (BigInt): **[MỚI]** ID của chứng từ gốc tương ứng (ID của Request hoặc ID của Payslip).
+* 🟢 **related_transaction_id** (FK, BigInt, Nullable): **[MỚI]** Khóa ngoại tự tham chiếu (Self-referencing) trỏ về chính bảng `transactions`. Dùng để liên kết dòng tiền đối ứng trong nguyên lý Bút toán kép (VD: Liên kết dòng tiền ra khỏi Ví Công Ty với dòng tiền vào Ví Nhân viên).
+* 🟢 **actor_id** (FK, BigInt, Nullable): **[MỚI]** Khóa ngoại trỏ tới bảng `users`. Ghi nhận ai là người thao tác kích hoạt giao dịch này (Phục vụ truy vết kiểm toán).
+* **description** (Text): Nội dung/Lý do diễn giải giao dịch.
+* **created_at** (Timestamp): Thời gian giao dịch được tạo ra.
+* **updated_at** (Timestamp): Thời gian cập nhật trạng thái cuối cùng.
 
 ## 7. MODULE KẾ TOÁN & LƯƠNG (Accounting)
 *Quản lý bảng lương và quỹ hệ thống.*
 
 ### `payroll_periods` (Kỳ lương)
 * **id** (PK, BigInt, Auto-increment)
+* **period_code** (Varchar, Unique, Not Null): Mã kỳ lương. Format: `PR-2026-02`. Auto-generated at application layer.
 * **name** (Varchar): Tên kỳ lương (VD: Lương T10/2025).
 * **month** (Int): Tháng.
 * **year** (Int): Năm.
@@ -162,10 +193,12 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 
 ### `payslips` (Phiếu lương chi tiết)
 * **id** (PK, BigInt, Auto-increment)
+* **payslip_code** (Varchar, Unique, Not Null): Mã phiếu lương cá nhân. Dùng làm mã chứng từ khi xuất file PDF cho nhân viên. Format: `PSL-EMP001-0226`. Auto-generated at application layer.
 * **period_id** (FK): Liên kết bảng `payroll_periods`.
 * **user_id** (FK): Liên kết bảng `users`.
 * **base_salary** (Decimal): Lương cứng.
 * **bonus** (Decimal): Thưởng.
+* **allowance** (Decimal): Các khoản phụ cấp.
 * **deduction** (Decimal): Các khoản giảm trừ khác.
 * **advance_deduct** (Decimal): Trừ nợ tạm ứng (Snapshot lịch sử).
 * **final_net_salary** (Decimal): Thực lĩnh (Chuyển vào ví).
@@ -200,3 +233,16 @@ Danh sách này bao gồm đầy đủ các yêu cầu: Cloudinary, Phân quyề
 * **ref_type** (Varchar): Loại đối tượng tham chiếu (VD: "REQUEST", "PAYSLIP", "PROJECT").
 * **is_read** (Boolean): Trạng thái đã xem (Default: `FALSE`).
 * **created_at** (Timestamp): Thời gian tạo.
+
+## 10. MODULE KIỂM TOÁN HỆ THỐNG (System Audit Trail)
+*Lưu vết toàn bộ các thao tác thay đổi dữ liệu cấu hình, phân quyền, ngân sách và trạng thái hệ thống. Bảng này tuân thủ nghiêm ngặt nguyên tắc Append-Only.*
+
+### `audit_logs`
+* **id** (PK, BigInt, Auto-increment)
+* **actor_id** (FK, BigInt, Nullable): Liên kết bảng `users`. Người thực hiện thao tác.
+* **action** (Enum): Phân loại hành động (VD: `USER_LOCKED`, `ROLE_ASSIGNED`, `QUOTA_TOPUP`).
+* **entity_name** (Varchar): Tên bảng hoặc thực thể bị tác động (VD: `departments`, `users`).
+* **entity_id** (Varchar): ID của dòng dữ liệu bị tác động.
+* **old_values** (JSON, Nullable): Trạng thái dữ liệu TRƯỚC khi thay đổi.
+* **new_values** (JSON, Nullable): Trạng thái dữ liệu SAU khi thay đổi.
+* **created_at** (Timestamp): Thời gian chính xác hành động xảy ra.
