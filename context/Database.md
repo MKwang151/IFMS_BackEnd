@@ -168,9 +168,9 @@ Bảng Sổ cái tổng (Ledger) lưu trữ toàn bộ lịch sử biến độn
 * **wallet_id** (FK, BigInt): Khóa ngoại trỏ tới bảng `wallets` (Ví Công ty hoặc Ví Nhân viên bị tác động).
 * **amount** (Decimal): Số tiền giao dịch (+/-).
 * 🟢 **balance_after** (Decimal, Not Null): **[MỚI]** Bức ảnh chụp chính xác số dư của `wallet_id` ngay sau khi giao dịch thành công. Dùng để xuất sao kê nhanh chóng.
-* **type** (Enum): `DEPOSIT`, `WITHDRAW`, `EXPENSE`, `SALARY`, `DEBT` (Phân loại tính chất dòng tiền).
+* **type** (Enum): `DEPOSIT`, `WITHDRAW`, `REQUEST_PAYMENT`, `PAYSLIP_PAYMENT`, `SYSTEM_ADJUSTMENT` (Phân loại tính chất dòng tiền).
 * **status** (Enum): `SUCCESS`, `PENDING`, `FAILED`.
-* 🟢 **reference_type** (Enum): **[MỚI]** Loại chứng từ gốc sinh ra giao dịch này (VD: `REQUEST`, `PAYSLIP`, `SYSTEM_FUND`, `MANUAL_ADJUSTMENT`). *(Thay thế hoàn toàn cho `ref_request_id` cũ)*.
+* 🟢 **reference_type** (Enum): **[MỚI]** Loại chứng từ gốc sinh ra giao dịch này (VD: `REQUEST`, `PAYSLIP`). Dùng để phân loại và tra cứu nhanh khi đối soát.
 * 🟢 **reference_id** (BigInt): **[MỚI]** ID của chứng từ gốc tương ứng (ID của Request hoặc ID của Payslip).
 * 🟢 **related_transaction_id** (FK, BigInt, Nullable): **[MỚI]** Khóa ngoại tự tham chiếu (Self-referencing) trỏ về chính bảng `transactions`. Dùng để liên kết dòng tiền đối ứng trong nguyên lý Bút toán kép (VD: Liên kết dòng tiền ra khỏi Ví Công Ty với dòng tiền vào Ví Nhân viên).
 * 🟢 **actor_id** (FK, BigInt, Nullable): **[MỚI]** Khóa ngoại trỏ tới bảng `users`. Ghi nhận ai là người thao tác kích hoạt giao dịch này (Phục vụ truy vết kiểm toán).
