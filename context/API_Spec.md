@@ -2787,3 +2787,189 @@ Cập nhật cấu hình hệ thống. Gửi danh sách key-value cần cập nh
 }
 ```
 
+---
+
+## 6. WEBSOCKET – Real-time Channels
+
+> **Transport:** SockJS + STOMP over WebSocket (Spring Boot `spring-boot-starter-websocket`).  
+> **Endpoint kết nối:** `wss://api.ifms.vn/ws` — Client gửi `Authorization: Bearer <accessToken>` qua STOMP `CONNECT` header.  
+> **Thư viện FE:** `@stomp/stompjs` + `sockjs-client` (hoặc native WebSocket).  
+> **Quy ước:** Mỗi user subscribe vào các channel riêng theo `userId`. Backend publish message qua `SimpMessagingTemplate.convertAndSendToUser()`.
+
+---
+
+### Channel 1: `/user/queue/wallet` — Live Wallet Balance
+
+**Mục đích:** Cập nhật số dư ví real-time khi có giao dịch thành công (giải ngân, chi lương, nạp tiền, rút tiền).
+
+**Trigger (Backend publish khi):**
+- `POST /accountant/disbursements/:id/disburse` → employee nhận tiền
+- `POST /accountant/payroll/:periodId/run` → batch publish cho tất cả employee có payslip
+- `POST /wallet/withdraw` → chính user rút tiền (confirm từ gateway callback)
+- Webhook deposit (nạp tiền qua VietQR) → confirm từ payment gateway
+- `SYSTEM_ADJUSTMENT` transaction được tạo
+
+**Subscribe:** `/user/queue/wallet`  
+> STOMP route tự động prefix `/user/{userId}` — mỗi user chỉ nhận message của mình.
+
+**Message payload:**
+```json
+{
+  "type": "WALLET_UPDATED",
+  "data": {
+    "walletId": 1,
+    "balance": 20000000,
+    "pendingBalance": 0,
+    "debtBalance": 0,
+    "version": 12,
+    "transaction": {
+      "id": 501,
+      "transactionCode": "TXN-8829145A",
+      "type": "PAYSLIP_PAYMENT",
+      "status": "SUCCESS",
+      "amount": 15000000,
+      "balanceAfter": 20000000,
+      "referenceType": "PAYSLIP",
+      "referenceId": 42,
+      "description": "Lương T02/2026",
+      "createdAt": "2026-02-25T10:00:00"
+    }
+  },
+  "timestamp": "2026-02-25T10:00:00"
+}
+```
+> `balance`, `pendingBalance`, `debtBalance`, `version`: snapshot mới nhất từ `wallets` sau giao dịch.  
+> `transaction`: thông tin giao dịch vừa SUCCESS — FE dùng để hiển thị toast/animation.  
+> `transaction.type`: xác định loại hiệu ứng — `PAYSLIP_PAYMENT` / `REQUEST_PAYMENT` → "Ting ting" + flash xanh lá, `WITHDRAW` → flash cam, `DEPOSIT` → flash xanh dương.
+
+**FE xử lý:**
+1. Nhận message → cập nhật wallet state (Redux/Zustand) → re-render số dư.
+2. Hiển thị toast notification: _"+ 15.000.000đ — Lương T02/2026"_.
+3. Animate số dư (count-up từ giá trị cũ → giá trị mới).
+4. Phát âm thanh "Ting ting" (nếu `amount > 0`).
+5. Cập nhật `version` để đảm bảo Optimistic Lock consistency.
+
+---
+
+### Channel 2: `/user/queue/requests` — Live Request Status
+
+**Mục đích:** Cập nhật trạng thái request real-time khi Manager/Admin approve/reject hoặc Accountant giải ngân.
+
+**Trigger (Backend publish khi):**
+- `POST /manager/approvals/:id/approve` → gửi cho requester
+- `POST /manager/approvals/:id/reject` → gửi cho requester
+- `POST /admin/approvals/:id/approve` → gửi cho requester
+- `POST /admin/approvals/:id/reject` → gửi cho requester
+- `POST /accountant/disbursements/:id/disburse` → gửi cho requester (`status: PAID`)
+- `POST /accountant/disbursements/:id/reject` → gửi cho requester
+
+**Subscribe:** `/user/queue/requests`
+
+**Message payload:**
+```json
+{
+  "type": "REQUEST_STATUS_CHANGED",
+  "data": {
+    "id": 101,
+    "requestCode": "REQ-IT-2602-001",
+    "previousStatus": "PENDING_MANAGER",
+    "newStatus": "APPROVED",
+    "approvedAmount": 8500000,
+    "rejectReason": null,
+    "actor": {
+      "id": 5,
+      "fullName": "Tran Thi Bich Ngoc",
+      "role": "MANAGER"
+    },
+    "comment": "Approved — looks good.",
+    "updatedAt": "2026-02-25T10:30:00"
+  },
+  "timestamp": "2026-02-25T10:30:00"
+}
+```
+> `previousStatus` / `newStatus`: trạng thái trước/sau — FE dùng để animate badge transition.  
+> `actor`: người thực hiện action — hiển thị trong toast _"Tran Thi Bich Ngoc đã duyệt đơn REQ-IT-2602-001"_.  
+> `rejectReason`: chỉ có khi `newStatus = REJECTED`.  
+> `approvedAmount`: chỉ có khi approve (có thể khác `amount` gốc).  
+> `comment`: ghi chú từ người duyệt. Nullable.
+
+**FE xử lý:**
+1. Nhận message → cập nhật request status trong state/cache.
+2. Nếu đang ở trang request detail (`/requests/101`) → animate badge color transition (vàng → xanh / đỏ).
+3. Nếu đang ở trang request list → cập nhật row tương ứng + update request summary counters.
+4. Hiển thị toast: _"Đơn REQ-IT-2602-001 đã được duyệt bởi Tran Thi Bich Ngoc"_.
+5. Cập nhật notification badge (unread +1).
+
+---
+
+### Channel 3: `/user/queue/notifications` — Live Notifications
+
+**Mục đích:** Push notification real-time (thay vì polling `GET /notifications`).
+
+**Trigger:** Mỗi khi Backend tạo record mới trong bảng `notifications`.
+
+**Subscribe:** `/user/queue/notifications`
+
+**Message payload:**
+```json
+{
+  "type": "NEW_NOTIFICATION",
+  "data": {
+    "id": 55,
+    "type": "REQUEST_APPROVED",
+    "title": "Request Approved",
+    "message": "Your request REQ-IT-2602-001 has been approved by manager",
+    "isRead": false,
+    "refId": 101,
+    "refType": "REQUEST",
+    "createdAt": "2026-02-25T10:30:00"
+  },
+  "timestamp": "2026-02-25T10:30:00"
+}
+```
+> Payload giống 1 item trong `GET /notifications` response.  
+> FE nhận → prepend vào notification list + tăng `unreadCount` badge.
+
+---
+
+### Backend Implementation Notes
+
+**Spring Boot config:**
+```
+// WebSocketConfig.java
+@EnableWebSocketMessageBroker
+- Registry: /ws (SockJS fallback)
+- Application prefix: /app
+- User destination prefix: /user
+- STOMP broker: /queue, /topic
+```
+
+**Publish pattern:**
+```java
+// Khi disbursement thành công:
+messagingTemplate.convertAndSendToUser(
+    userId.toString(),          // username = userId
+    "/queue/wallet",            // destination
+    walletUpdateMessage         // payload
+);
+
+// Khi request status thay đổi:
+messagingTemplate.convertAndSendToUser(
+    requesterId.toString(),
+    "/queue/requests",
+    requestStatusMessage
+);
+
+// Batch payroll (50 người):
+payslips.forEach(payslip -> {
+    messagingTemplate.convertAndSendToUser(
+        payslip.getUserId().toString(),
+        "/queue/wallet",
+        buildWalletMessage(payslip)
+    );
+});
+```
+
+**Authentication:** Intercept STOMP `CONNECT` frame → extract JWT from header → validate → set `Principal.name = userId`. Reject nếu token invalid/expired.
+
+**Reconnection:** FE xử lý auto-reconnect (exponential backoff: 1s → 2s → 4s → 8s → max 30s). Khi reconnect thành công → gọi `GET /wallet` + `GET /notifications` để sync lại state (tránh miss message khi offline).
