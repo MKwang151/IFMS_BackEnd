@@ -67,7 +67,7 @@ public class Transaction extends BaseEntity {
   // ĐA HÌNH THAM CHIẾU (Polymorphic Reference) - DÙNG ENUM
   // ------------------------------------------------------------------
   @Enumerated(EnumType.STRING)
-  @Column(name = "reference_type", nullable = false, length = 30)
+  @Column(name = "reference_type", length = 30)
   private ReferenceType referenceType;
 
   // ID tương ứng của entity sinh ra giao dịch này.
