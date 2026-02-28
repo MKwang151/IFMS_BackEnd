@@ -33,7 +33,7 @@ public class Role extends BaseEntity {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "role_permissions", joinColumns = @JoinColumn(name = "role_id"))
     @Enumerated(EnumType.STRING)
-    @Column(name = "permission")
+    @Column(name = "permission", nullable = false, length = 50)
     @Builder.Default
     private Set<Permission> permissions = new HashSet<>();
 

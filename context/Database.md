@@ -47,6 +47,10 @@ Các trường mã định danh (Business Codes) như `project_code`, `phase_cod
 * **role_id** (FK): Liên kết bảng `roles`.
 * **department_id** (FK): Liên kết bảng `departments`.
 * **status** (Enum): ACTIVE, LOCKED, PENDING.
+* **enabled** (Boolean): Spring Security - Tài khoản có được kích hoạt không.
+* **account_non_expired** (Boolean): Spring Security - Tài khoản chưa hết hạn.
+* **account_non_locked** (Boolean): Spring Security - Tài khoản không bị khóa.
+* **credentials_non_expired** (Boolean): Spring Security - Mật khẩu chưa hết hạn.
 
 ### `user_profiles` (Hồ sơ cá nhân & Ngân hàng)
 * **user_id** (PK, FK): Khóa chính chung với bảng `users`.
@@ -66,6 +70,17 @@ Các trường mã định danh (Business Codes) như `project_code`, `phase_cod
 * **transaction_pin** (Varchar): Mã PIN 5 số (Hash).
 * **retry_count** (Int): Số lần nhập sai PIN liên tiếp.
 * **locked_until** (Timestamp): Thời gian mở khóa PIN.
+
+### `jwt_tokens` (Quản lý JWT Token)
+*Bảng kỹ thuật để quản lý vòng đời JWT token (Access/Refresh Token), hỗ trợ revoke token và blacklist.*
+* **id** (PK, BigInt, Auto-increment)
+* **token** (Varchar(1000), Not Null): Chuỗi JWT token.
+* **user_id** (FK, BigInt, Not Null): Liên kết bảng `users` - Chủ sở hữu token.
+* **token_type** (Varchar(20), Not Null): Loại token (ACCESS, REFRESH).
+* **expiry_date** (Timestamp, Not Null): Thời gian hết hạn của token.
+* **revoked** (Boolean, Not Null): Trạng thái token có bị thu hồi không (Default: FALSE).
+* **revoked_at** (Timestamp, Nullable): Thời gian token bị thu hồi.
+* **created_at** (Timestamp, Not Null): Thời gian token được tạo.
 
 ---
 
@@ -140,7 +155,7 @@ Các trường mã định danh (Business Codes) như `project_code`, `phase_cod
 * **request_id** (FK): Liên kết bảng `requests`.
 * **actor_id** (FK): Người thao tác (Manager/Admin).
 * **action** (Enum): APPROVE, REJECT, ESCALATE.
-* **request_history_status** (Enum):     PENDING, APPROVED, REJECTED, CANCELED  (Snapshot trạng thái của Request sau khi hành động diễn ra).
+* **status_after_action** (Enum): PENDING, APPROVED, REJECTED, CANCELED (Snapshot trạng thái của Request sau khi hành động diễn ra).
 * **comment** (Text): Ghi chú kèm theo.
 * **created_at** (Timestamp): Thời gian thao tác.
 
@@ -203,6 +218,7 @@ Bảng Sổ cái tổng (Ledger) lưu trữ toàn bộ lịch sử biến độn
 * **advance_deduct** (Decimal): Trừ nợ tạm ứng (Snapshot lịch sử).
 * **final_net_salary** (Decimal): Thực lĩnh (Chuyển vào ví).
 * **status** (Enum): DRAFT, PAID.
+* **payment_date** (Timestamp, Nullable): Ngày thực tế chuyển lương vào ví nhân viên.
 
 ### `system_funds` (Quỹ hệ thống/Mock Bank)
 * **id** (PK, BigInt): Thường là 1.

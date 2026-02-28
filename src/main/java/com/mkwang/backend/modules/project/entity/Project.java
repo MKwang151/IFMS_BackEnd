@@ -52,7 +52,7 @@ public class Project extends BaseEntity {
   @Builder.Default
   private BigDecimal totalBudget = BigDecimal.ZERO;
 
-  @Column(name = "total_spent", precision = 19, scale = 2)
+  @Column(name = "total_spent", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal totalSpent = BigDecimal.ZERO;
 

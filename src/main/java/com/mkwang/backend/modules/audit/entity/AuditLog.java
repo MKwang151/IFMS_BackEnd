@@ -1,11 +1,14 @@
 package com.mkwang.backend.modules.audit.entity;
 
-import com.mkwang.backend.common.base.BaseEntity;
 import com.mkwang.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
 
 /**
  * AuditLog entity - Module 10: System Audit Trail.
@@ -14,16 +17,21 @@ import org.hibernate.type.SqlTypes;
  * budgets, system status). This table is strictly Append-Only —
  * no UPDATE or DELETE is ever performed on it.
  *
+ * Does NOT extend BaseEntity because:
+ * - Append-only: no updated_at / updated_by needed.
+ * - actor_id replaces created_by.
+ *
  * Mapped to table: audit_logs
  */
 @Entity
 @Table(name = "audit_logs")
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AuditLog extends BaseEntity {
+public class AuditLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -74,5 +82,10 @@ public class AuditLog extends BaseEntity {
     @Column(name = "new_values", columnDefinition = "jsonb")
     private String newValues;
 
-    // created_at is inherited from BaseEntity
+    /**
+     * Exact timestamp when the action occurred.
+     */
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 }

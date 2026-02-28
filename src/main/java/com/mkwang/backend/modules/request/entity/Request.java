@@ -57,18 +57,13 @@ public class Request extends BaseEntity {
   @Column(name = "approved_amount", precision = 19, scale = 2)
   private BigDecimal approvedAmount;
 
-  // --- CẬP NHẬT: THAY ĐỔI TỪ SINGLE FILE SANG LIST FILES ---
-
-  @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-  @JoinTable(
-          name = "request_attachments", // Tên bảng trung gian
-          joinColumns = @JoinColumn(name = "request_id"), // Khóa ngoại trỏ về Request
-          inverseJoinColumns = @JoinColumn(name = "file_id") // Khóa ngoại trỏ về FileStorage
-  )
+  /**
+   * List of attachments (invoices, receipts, PDFs, Excel files) for this request.
+   * Mapped via RequestAttachment entity to have proper composite PK (request_id, file_id).
+   */
+  @OneToMany(mappedBy = "request", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
   @Builder.Default
-  private List<FileStorage> attachments = new ArrayList<>();
-
-  // -----------------------------------------------------------
+  private List<RequestAttachment> attachments = new ArrayList<>();
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 20)
@@ -96,5 +91,34 @@ public class Request extends BaseEntity {
 
   public boolean requiresProof() {
     return type == RequestType.EXPENSE || type == RequestType.REIMBURSE;
+  }
+
+  // Helper methods for managing attachments
+  /**
+   * Add an attachment file to this request.
+   * Creates the RequestAttachment association entity automatically.
+   */
+  public void addAttachment(FileStorage file) {
+    RequestAttachment attachment = RequestAttachment.builder()
+            .request(this)
+            .file(file)
+            .build();
+    this.attachments.add(attachment);
+  }
+
+  /**
+   * Remove an attachment by file ID.
+   */
+  public void removeAttachment(Long fileId) {
+    this.attachments.removeIf(att -> att.getFile().getId().equals(fileId));
+  }
+
+  /**
+   * Get list of FileStorage from attachments (convenience method for business logic).
+   */
+  public List<FileStorage> getAttachmentFiles() {
+    return this.attachments.stream()
+            .map(RequestAttachment::getFile)
+            .toList();
   }
 }

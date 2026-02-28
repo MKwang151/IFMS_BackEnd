@@ -38,13 +38,13 @@ public class Department extends BaseEntity {
 
   // TỔNG NGÂN SÁCH ĐÃ NHẬN: Bằng tổng (Sum) của tất cả project_budget thuộc phòng này.
   // Cột này chỉ TĂNG lên mỗi khi Admin duyệt Top-up cho một dự án của phòng.
-  @Column(name = "total_project_quota", precision = 19, scale = 2)
+  @Column(name = "total_project_quota", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal totalProjectQuota = BigDecimal.ZERO;
 
   // TỔNG TIỀN CÒN LẠI: Bằng tổng tiền chưa tiêu của tất cả các dự án thuộc phòng.
   // Cột này TĂNG khi được Top-up, và GIẢM khi có một nhân viên trong phòng được duyệt chi tiền.
-  @Column(name = "total_available_balance", precision = 19, scale = 2)
+  @Column(name = "total_available_balance", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal totalAvailableBalance = BigDecimal.ZERO;
 }

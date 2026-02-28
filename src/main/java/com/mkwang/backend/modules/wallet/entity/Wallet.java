@@ -28,15 +28,15 @@ public class Wallet extends BaseEntity {
   @JoinColumn(name = "user_id", unique = true, nullable = false)
   private User user;
 
-  @Column(name = "balance", precision = 19, scale = 2, nullable = false)
+  @Column(name = "balance", precision = 19, scale = 2, nullable = false, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal balance = BigDecimal.ZERO;
 
-  @Column(name = "pending_balance", precision = 19, scale = 2, nullable = false)
+  @Column(name = "pending_balance", precision = 19, scale = 2, nullable = false, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal pendingBalance = BigDecimal.ZERO;
 
-  @Column(name = "debt_balance", precision = 19, scale = 2, nullable = false)
+  @Column(name = "debt_balance", precision = 19, scale = 2, nullable = false, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal debtBalance = BigDecimal.ZERO;
 

@@ -44,7 +44,7 @@ public class Notification extends BaseEntity {
   @Column(name = "ref_type", length = 50)
   private String refType; // Type of reference: "REQUEST", "PAYSLIP", "PROJECT", etc.
 
-  @Column(name = "is_read", nullable = false)
+  @Column(name = "is_read", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
   @Builder.Default
   private Boolean isRead = false;
 

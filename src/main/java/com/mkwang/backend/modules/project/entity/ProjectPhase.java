@@ -46,7 +46,7 @@ public class ProjectPhase extends BaseEntity {
   @Builder.Default
   private BigDecimal budgetLimit = BigDecimal.ZERO;
 
-  @Column(name = "current_spent", precision = 19, scale = 2)
+  @Column(name = "current_spent", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal currentSpent = BigDecimal.ZERO;
 

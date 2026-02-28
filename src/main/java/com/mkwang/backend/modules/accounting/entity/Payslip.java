@@ -60,7 +60,7 @@ public class Payslip extends BaseEntity {
   @Builder.Default
   private BigDecimal deduction = BigDecimal.ZERO;
 
-  @Column(name = "advance_deduct", precision = 19, scale = 2)
+  @Column(name = "advance_deduct", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal advanceDeduct = BigDecimal.ZERO; // Snapshot of debt deducted
 
