@@ -1,222 +1,412 @@
-//package com.mkwang.backend.config;
-//
-//import com.mkwang.backend.modules.accounting.entity.SystemFund;
-//import com.mkwang.backend.modules.accounting.repository.SystemFundRepository;
-//import com.mkwang.backend.modules.user.entity.Permission;
-//import com.mkwang.backend.modules.user.entity.Role;
-//import com.mkwang.backend.modules.user.entity.User;
-//import com.mkwang.backend.modules.user.entity.UserStatus;
-//import com.mkwang.backend.modules.user.repository.RoleRepository;
-//import com.mkwang.backend.modules.user.repository.UserRepository;
-//import com.mkwang.backend.modules.wallet.entity.Wallet;
-//import com.mkwang.backend.modules.wallet.repository.WalletRepository;
-//import lombok.RequiredArgsConstructor;
-//import lombok.extern.slf4j.Slf4j;
-//import org.springframework.boot.CommandLineRunner;
-//import org.springframework.security.crypto.password.PasswordEncoder;
-//import org.springframework.stereotype.Component;
-//import org.springframework.transaction.annotation.Transactional;
-//
-//import java.math.BigDecimal;
-//import java.util.Set;
-//
-///**
-// * Initialize default roles, users, wallets and system fund on application
-// * startup.
-// * Only creates data if it doesn't already exist (idempotent).
-// */
-//@Slf4j
-//@Component
-//@RequiredArgsConstructor
-//public class DataInitializer implements CommandLineRunner {
-//
-//  private final RoleRepository roleRepository;
-//  private final UserRepository userRepository;
-//  private final WalletRepository walletRepository;
-//  private final SystemFundRepository systemFundRepository;
-//  private final PasswordEncoder passwordEncoder;
-//
-//  private static final String DEFAULT_PASSWORD = "123456";
-//  private static final BigDecimal INITIAL_SYSTEM_FUND = new BigDecimal("10000000000"); // 10 tỷ VND
-//
-//  @Override
-//  @Transactional
-//  public void run(String... args) {
-//    log.info("🚀 Starting DataInitializer...");
-//
-//    initRoles();
-//    initUsers();
-//    initSystemFund();
-//
-//    log.info("✅ DataInitializer completed successfully!");
-//  }
-//
-//  /**
-//   * Initialize 4 default roles with permissions
-//   */
-//  private void initRoles() {
-//    // 1. EMPLOYEE Role
-//    createRoleIfNotExists("EMPLOYEE", "Nhân viên - Tạo yêu cầu, xem ví cá nhân", Set.of(
-//        Permission.USER_PROFILE_VIEW,
-//        Permission.USER_PROFILE_UPDATE,
-//        Permission.USER_PIN_UPDATE,
-//        Permission.NOTIFICATION_VIEW,
-//        Permission.WALLET_VIEW_SELF,
-//        Permission.WALLET_DEPOSIT,
-//        Permission.WALLET_WITHDRAW,
-//        Permission.WALLET_TRANSACTION_VIEW,
-//        Permission.PROJECT_VIEW_ACTIVE,
-//        Permission.REQUEST_CREATE,
-//        Permission.REQUEST_VIEW_SELF,
-//        Permission.PAYROLL_VIEW_SELF,
-//        Permission.PAYROLL_DOWNLOAD));
-//
-//    // 2. MANAGER Role (Inherits Employee + Manager permissions)
-//    createRoleIfNotExists("MANAGER", "Trưởng phòng - Quản lý dự án, duyệt yêu cầu cấp 1", Set.of(
-//        // Employee permissions
-//        Permission.USER_PROFILE_VIEW,
-//        Permission.USER_PROFILE_UPDATE,
-//        Permission.USER_PIN_UPDATE,
-//        Permission.NOTIFICATION_VIEW,
-//        Permission.WALLET_VIEW_SELF,
-//        Permission.WALLET_DEPOSIT,
-//        Permission.WALLET_WITHDRAW,
-//        Permission.WALLET_TRANSACTION_VIEW,
-//        Permission.PROJECT_VIEW_ACTIVE,
-//        Permission.REQUEST_CREATE,
-//        Permission.REQUEST_VIEW_SELF,
-//        Permission.PAYROLL_VIEW_SELF,
-//        Permission.PAYROLL_DOWNLOAD,
-//        // Manager-specific permissions
-//        Permission.PROJECT_CREATE,
-//        Permission.PROJECT_UPDATE,
-//        Permission.PROJECT_PHASE_MANAGE,
-//        Permission.PROJECT_MEMBER_MANAGE,
-//        Permission.PROJECT_STATUS_MANAGE,
-//        Permission.REQUEST_VIEW_DEPT,
-//        Permission.REQUEST_APPROVE_TIER1,
-//        Permission.REQUEST_REJECT,
-//        Permission.DEPT_VIEW_DASHBOARD));
-//
-//    // 3. ACCOUNTANT Role (Inherits Employee + Accountant permissions)
-//    createRoleIfNotExists("ACCOUNTANT", "Kế toán - Quản lý quỹ, chi lương, giải ngân", Set.of(
-//        // Employee permissions
-//        Permission.USER_PROFILE_VIEW,
-//        Permission.USER_PROFILE_UPDATE,
-//        Permission.USER_PIN_UPDATE,
-//        Permission.NOTIFICATION_VIEW,
-//        Permission.WALLET_VIEW_SELF,
-//        Permission.WALLET_DEPOSIT,
-//        Permission.WALLET_WITHDRAW,
-//        Permission.WALLET_TRANSACTION_VIEW,
-//        Permission.PROJECT_VIEW_ACTIVE,
-//        Permission.REQUEST_CREATE,
-//        Permission.REQUEST_VIEW_SELF,
-//        Permission.PAYROLL_VIEW_SELF,
-//        Permission.PAYROLL_DOWNLOAD,
-//        // Accountant-specific permissions
-//        Permission.PROJECT_VIEW_ALL,
-//        Permission.REQUEST_VIEW_APPROVED,
-//        Permission.REQUEST_PAYOUT,
-//        Permission.TRANSACTION_APPROVE_WITHDRAW,
-//        Permission.PAYROLL_MANAGE,
-//        Permission.PAYROLL_EXECUTE,
-//        Permission.SYSTEM_FUND_VIEW,
-//        Permission.SYSTEM_FUND_TOPUP));
-//
-//    // 4. ADMIN Role (Full permissions)
-//    createRoleIfNotExists("ADMIN", "Quản trị viên - Toàn quyền hệ thống", Set.of(Permission.values()));
-//  }
-//
-//  /**
-//   * Initialize 4 default users (one for each role)
-//   */
-//  private void initUsers() {
-//    Role employeeRole = roleRepository.findByName("EMPLOYEE").orElseThrow();
-//    Role managerRole = roleRepository.findByName("MANAGER").orElseThrow();
-//    Role accountantRole = roleRepository.findByName("ACCOUNTANT").orElseThrow();
-//    Role adminRole = roleRepository.findByName("ADMIN").orElseThrow();
-//
-//    // Create users
-//    User employee = createUserIfNotExists("employee@ifms.com", "Nguyễn Văn A", employeeRole);
-//    User manager = createUserIfNotExists("manager@ifms.com", "Trần Thị B", managerRole);
-//    User accountant = createUserIfNotExists("accountant@ifms.com", "Lê Văn C", accountantRole);
-//    User admin = createUserIfNotExists("admin@ifms.com", "Phạm Thị D", adminRole);
-//
-//    // Create wallets for each user
-//    if (employee != null)
-//      createWalletIfNotExists(employee);
-//    if (manager != null)
-//      createWalletIfNotExists(manager);
-//    if (accountant != null)
-//      createWalletIfNotExists(accountant);
-//    if (admin != null)
-//      createWalletIfNotExists(admin);
-//  }
-//
-//  /**
-//   * Initialize System Fund with 10 billion VND
-//   */
-//  private void initSystemFund() {
-//    if (systemFundRepository.count() == 0) {
-//      SystemFund fund = SystemFund.builder()
-//          .totalBalance(INITIAL_SYSTEM_FUND)
-//          .bankName("Vietcombank")
-//          .bankAccount("0011004567890")
-//          .build();
-//      systemFundRepository.save(fund);
-//      log.info("💰 Created SystemFund with initial balance: {} VND", INITIAL_SYSTEM_FUND);
-//    } else {
-//      log.info("💰 SystemFund already exists, skipping...");
-//    }
-//  }
-//
-//  // ============ HELPER METHODS ============
-//
-//  private void createRoleIfNotExists(String name, String description, Set<Permission> permissions) {
-//    if (roleRepository.findByName(name).isEmpty()) {
-//      Role role = Role.builder()
-//          .name(name)
-//          .description(description)
-//          .permissions(permissions)
-//          .build();
-//      roleRepository.save(role);
-//      log.info("🔐 Created role: {} with {} permissions", name, permissions.size());
-//    } else {
-//      log.info("🔐 Role {} already exists, skipping...", name);
-//    }
-//  }
-//
-//  private User createUserIfNotExists(String email, String fullName, Role role) {
-//    if (userRepository.findByEmail(email).isEmpty()) {
-//      User user = User.builder()
-//          .email(email)
-//          .password(passwordEncoder.encode(DEFAULT_PASSWORD))
-//          .fullName(fullName)
-//          .role(role)
-//          .status(UserStatus.ACTIVE)
-//          .isFirstLogin(false) // Set false for demo accounts
-//          .enabled(true)
-//          .build();
-//      userRepository.save(user);
-//      log.info("👤 Created user: {} ({})", fullName, email);
-//      return user;
-//    } else {
-//      log.info("👤 User {} already exists, skipping...", email);
-//      return null;
-//    }
-//  }
-//
-//  private void createWalletIfNotExists(User user) {
-//    if (!walletRepository.existsByUserId(user.getId())) {
-//      Wallet wallet = Wallet.builder()
-//          .user(user)
-//          .balance(BigDecimal.ZERO)
-//          .pendingBalance(BigDecimal.ZERO)
-//          .debtBalance(BigDecimal.ZERO)
-//          .build();
-//      walletRepository.save(wallet);
-//      log.info("💳 Created wallet for user: {}", user.getEmail());
-//    }
-//  }
-//}
+package com.mkwang.backend.config;
+
+import com.mkwang.backend.modules.accounting.entity.SystemFund;
+import com.mkwang.backend.modules.accounting.repository.SystemFundRepository;
+import com.mkwang.backend.modules.config.entity.SystemConfig;
+import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
+import com.mkwang.backend.modules.organization.entity.Department;
+import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
+import com.mkwang.backend.modules.user.entity.*;
+import com.mkwang.backend.modules.user.repository.RoleRepository;
+import com.mkwang.backend.modules.user.repository.UserRepository;
+import com.mkwang.backend.modules.wallet.entity.Wallet;
+import com.mkwang.backend.modules.wallet.repository.WalletRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * DataInitializer – Seeds all reference/master data required for the IFMS system.
+ * Idempotent: safe to run on every startup. Only creates data that does not already exist.
+ *
+ * Seeding order (respects FK constraints):
+ *   1. Roles + Permissions
+ *   2. Departments (manager_id = null initially, updated after users are created)
+ *   3. Users (role + department assigned)
+ *   4. Update Department managers
+ *   5. UserProfiles
+ *   6. Wallets
+ *   7. SystemFund
+ *   8. SystemConfig
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class DataInitializer implements CommandLineRunner {
+
+    private final RoleRepository            roleRepository;
+    private final UserRepository            userRepository;
+    private final DepartmentRepository      departmentRepository;
+    private final WalletRepository          walletRepository;
+    private final SystemFundRepository      systemFundRepository;
+    private final SystemConfigRepository    systemConfigRepository;
+    private final PasswordEncoder           passwordEncoder;
+
+    private static final String DEFAULT_PASSWORD     = "Ifms@2026";
+    private static final BigDecimal INITIAL_FUND     = new BigDecimal("50000000000"); // 50 tỷ VND
+
+    // =========================================================
+    // ENTRY POINT
+    // =========================================================
+    @Override
+    @Transactional
+    public void run(String... args) {
+        log.info("╔══════════════════════════════════════════╗");
+        log.info("║      🚀  IFMS DataInitializer START      ║");
+        log.info("╚══════════════════════════════════════════╝");
+
+        initRoles();
+        initDepartments();
+        initUsers();
+        initSystemFund();
+        initSystemConfigs();
+
+        log.info("╔══════════════════════════════════════════╗");
+        log.info("║   ✅  DataInitializer completed OK       ║");
+        log.info("╚══════════════════════════════════════════╝");
+    }
+
+    // =========================================================
+    // 1. ROLES & PERMISSIONS
+    // =========================================================
+    private void initRoles() {
+        log.info("── [1/5] Seeding Roles ...");
+
+        // EMPLOYEE – Nhân viên
+        createRoleIfNotExists("EMPLOYEE", "Nhân viên – tạo yêu cầu, xem ví cá nhân", Set.of(
+                Permission.USER_PROFILE_VIEW,
+                Permission.USER_PROFILE_UPDATE,
+                Permission.USER_PIN_UPDATE,
+                Permission.NOTIFICATION_VIEW,
+                Permission.WALLET_VIEW_SELF,
+                Permission.WALLET_DEPOSIT,
+                Permission.WALLET_WITHDRAW,
+                Permission.WALLET_TRANSACTION_VIEW,
+                Permission.PROJECT_VIEW_ACTIVE,
+                Permission.REQUEST_CREATE,
+                Permission.REQUEST_VIEW_SELF,
+                Permission.PAYROLL_VIEW_SELF,
+                Permission.PAYROLL_DOWNLOAD
+        ));
+
+        // MANAGER – Trưởng phòng
+        createRoleIfNotExists("MANAGER", "Trưởng phòng – quản lý dự án, duyệt yêu cầu cấp 1", Set.of(
+                Permission.USER_PROFILE_VIEW,
+                Permission.USER_PROFILE_UPDATE,
+                Permission.USER_PIN_UPDATE,
+                Permission.NOTIFICATION_VIEW,
+                Permission.WALLET_VIEW_SELF,
+                Permission.WALLET_DEPOSIT,
+                Permission.WALLET_WITHDRAW,
+                Permission.WALLET_TRANSACTION_VIEW,
+                Permission.PROJECT_VIEW_ACTIVE,
+                Permission.REQUEST_CREATE,
+                Permission.REQUEST_VIEW_SELF,
+                Permission.PAYROLL_VIEW_SELF,
+                Permission.PAYROLL_DOWNLOAD,
+                // Manager-specific
+                Permission.PROJECT_CREATE,
+                Permission.PROJECT_UPDATE,
+                Permission.PROJECT_PHASE_MANAGE,
+                Permission.PROJECT_MEMBER_MANAGE,
+                Permission.PROJECT_STATUS_MANAGE,
+                Permission.REQUEST_VIEW_DEPT,
+                Permission.REQUEST_APPROVE_TIER1,
+                Permission.REQUEST_REJECT,
+                Permission.DEPT_VIEW_DASHBOARD
+        ));
+
+        // ACCOUNTANT – Kế toán
+        createRoleIfNotExists("ACCOUNTANT", "Kế toán – quản lý quỹ, chi lương, giải ngân", Set.of(
+                Permission.USER_PROFILE_VIEW,
+                Permission.USER_PROFILE_UPDATE,
+                Permission.USER_PIN_UPDATE,
+                Permission.NOTIFICATION_VIEW,
+                Permission.WALLET_VIEW_SELF,
+                Permission.WALLET_DEPOSIT,
+                Permission.WALLET_WITHDRAW,
+                Permission.WALLET_TRANSACTION_VIEW,
+                Permission.PROJECT_VIEW_ACTIVE,
+                Permission.REQUEST_CREATE,
+                Permission.REQUEST_VIEW_SELF,
+                Permission.PAYROLL_VIEW_SELF,
+                Permission.PAYROLL_DOWNLOAD,
+                // Accountant-specific
+                Permission.PROJECT_VIEW_ALL,
+                Permission.REQUEST_VIEW_APPROVED,
+                Permission.REQUEST_PAYOUT,
+                Permission.TRANSACTION_APPROVE_WITHDRAW,
+                Permission.PAYROLL_MANAGE,
+                Permission.PAYROLL_EXECUTE,
+                Permission.SYSTEM_FUND_VIEW,
+                Permission.SYSTEM_FUND_TOPUP
+        ));
+
+        // ADMIN – Toàn quyền
+        createRoleIfNotExists("ADMIN", "Quản trị viên – toàn quyền hệ thống",
+                EnumSet.allOf(Permission.class));
+    }
+
+    // =========================================================
+    // 2. DEPARTMENTS
+    // =========================================================
+    private void initDepartments() {
+        log.info("── [2/5] Seeding Departments ...");
+
+        createDeptIfNotExists("Ban Giám Đốc",          "BGD",  new BigDecimal("5000000000"),  new BigDecimal("5000000000"));
+        createDeptIfNotExists("Phòng Công Nghệ",        "IT",   new BigDecimal("20000000000"), new BigDecimal("20000000000"));
+        createDeptIfNotExists("Phòng Kế Toán – Tài Chính", "FIN", new BigDecimal("10000000000"), new BigDecimal("10000000000"));
+        createDeptIfNotExists("Phòng Kinh Doanh",       "SALES", new BigDecimal("15000000000"), new BigDecimal("15000000000"));
+    }
+
+    // =========================================================
+    // 3. USERS  →  then link managers to departments
+    // =========================================================
+    private void initUsers() {
+        log.info("── [3/5] Seeding Users, Profiles & Wallets ...");
+
+        Role adminRole      = roleRepository.findByName("ADMIN").orElseThrow();
+        Role managerRole    = roleRepository.findByName("MANAGER").orElseThrow();
+        Role accountantRole = roleRepository.findByName("ACCOUNTANT").orElseThrow();
+        Role employeeRole   = roleRepository.findByName("EMPLOYEE").orElseThrow();
+
+        Department bgd   = departmentRepository.findByCode("BGD").orElseThrow();
+        Department it    = departmentRepository.findByCode("IT").orElseThrow();
+        Department fin   = departmentRepository.findByCode("FIN").orElseThrow();
+        Department sales = departmentRepository.findByCode("SALES").orElseThrow();
+
+        // ---- ADMIN ----
+        User admin = createUserIfNotExists(
+                "admin@ifms.vn", "MK000", "Phạm Thị Thanh Hà",
+                adminRole, bgd,
+                "CEO", "0901000001", "Hà Nội",
+                "VCB", "0011004000001", "PHAM THI THANH HA"
+        );
+
+        // ---- ACCOUNTANT ----
+        User accountant = createUserIfNotExists(
+                "accountant@ifms.vn", "MK001", "Lê Văn Cường",
+                accountantRole, fin,
+                "Chief Accountant", "0901000002", "Hà Nội",
+                "MBBank", "0011004000002", "LE VAN CUONG"
+        );
+
+        // ---- MANAGERS ----
+        User managerIT = createUserIfNotExists(
+                "manager.it@ifms.vn", "MK002", "Trần Thị Bích",
+                managerRole, it,
+                "IT Manager", "0901000003", "Hà Nội",
+                "Techcombank", "0011004000003", "TRAN THI BICH"
+        );
+
+        User managerSales = createUserIfNotExists(
+                "manager.sales@ifms.vn", "MK003", "Nguyễn Hồng Sơn",
+                managerRole, sales,
+                "Sales Manager", "0901000004", "TP.HCM",
+                "ACB", "0011004000004", "NGUYEN HONG SON"
+        );
+
+        // ---- EMPLOYEES ----
+        createUserIfNotExists(
+                "emp.it1@ifms.vn", "MK004", "Đỗ Quốc Bảo",
+                employeeRole, it,
+                "Senior Backend Developer", "0901000005", "Hà Nội",
+                "VCB", "0011004000005", "DO QUOC BAO"
+        );
+
+        createUserIfNotExists(
+                "emp.it2@ifms.vn", "MK005", "Vũ Thị Lan",
+                employeeRole, it,
+                "Frontend Developer", "0901000006", "Hà Nội",
+                "MBBank", "0011004000006", "VU THI LAN"
+        );
+
+        createUserIfNotExists(
+                "emp.sales1@ifms.vn", "MK006", "Phạm Văn Đức",
+                employeeRole, sales,
+                "Sales Executive", "0901000007", "TP.HCM",
+                "Techcombank", "0011004000007", "PHAM VAN DUC"
+        );
+
+        createUserIfNotExists(
+                "emp.fin1@ifms.vn", "MK007", "Nguyễn Thị Minh",
+                employeeRole, fin,
+                "Junior Accountant", "0901000008", "Hà Nội",
+                "VCB", "0011004000008", "NGUYEN THI MINH"
+        );
+
+        // Gán manager cho từng phòng ban (sau khi user đã được persist)
+        assignManagerToDept(bgd,   admin);
+        assignManagerToDept(fin,   accountant);
+        assignManagerToDept(it,    managerIT);
+        assignManagerToDept(sales, managerSales);
+    }
+
+    // =========================================================
+    // 4. SYSTEM FUND
+    // =========================================================
+    private void initSystemFund() {
+        log.info("── [4/5] Seeding SystemFund ...");
+        if (systemFundRepository.count() == 0) {
+            SystemFund fund = SystemFund.builder()
+                    .totalBalance(INITIAL_FUND)
+                    .bankName("Vietcombank")
+                    .bankAccount("0011004999999")
+                    .build();
+            systemFundRepository.save(fund);
+            log.info("   💰 SystemFund created: {} VND", INITIAL_FUND);
+        } else {
+            log.info("   💰 SystemFund already exists, skipping.");
+        }
+    }
+
+    // =========================================================
+    // 5. SYSTEM CONFIGS
+    // =========================================================
+    private void initSystemConfigs() {
+        log.info("── [5/5] Seeding SystemConfig ...");
+
+        List<Object[]> configs = List.of(
+                // key, value, description
+                new Object[]{"PIN_MAX_RETRY",           "5",            "Số lần nhập sai PIN tối đa trước khi bị khóa"},
+                new Object[]{"PIN_LOCK_MINUTES",        "30",           "Thời gian khóa PIN (phút) sau khi vượt quá số lần thử"},
+                new Object[]{"WITHDRAW_AUTO_APPROVE_LIMIT", "5000000",  "Số tiền rút tối đa tự động duyệt (VND). Vượt ngưỡng sẽ chuyển Pending cho Accountant duyệt"},
+                new Object[]{"REQUEST_TIER1_LIMIT",     "20000000",     "Hạn mức duyệt cấp 1 của Manager (VND). Vượt ngưỡng tự leo thang lên Admin"},
+                new Object[]{"PAYROLL_ADVANCE_NETTING", "true",         "Tự động trừ nợ tạm ứng khi chi lương (true/false)"},
+                new Object[]{"SYSTEM_MAINTENANCE_MODE", "false",        "Chế độ bảo trì hệ thống – chặn toàn bộ giao dịch nếu true"},
+                new Object[]{"DEFAULT_CURRENCY",        "VND",          "Đơn vị tiền tệ mặc định của hệ thống"},
+                new Object[]{"MAX_ATTACHMENT_SIZE_MB",  "10",           "Dung lượng tối đa mỗi file đính kèm yêu cầu (MB)"},
+                new Object[]{"MAX_ATTACHMENT_COUNT",    "5",            "Số file đính kèm tối đa cho một yêu cầu"},
+                new Object[]{"JWT_REFRESH_EXPIRY_DAYS", "7",            "Thời hạn Refresh Token (ngày)"},
+                new Object[]{"NOTIFICATION_RETAIN_DAYS","90",           "Số ngày lưu giữ thông báo trước khi tự xóa"}
+        );
+
+        for (Object[] row : configs) {
+            String key   = (String) row[0];
+            String value = (String) row[1];
+            String desc  = (String) row[2];
+            if (!systemConfigRepository.existsById(key)) {
+                systemConfigRepository.save(
+                        SystemConfig.builder()
+                                .key(key)
+                                .value(value)
+                                .description(desc)
+                                .build()
+                );
+                log.info("   ⚙️  Config [{}] = {}", key, value);
+            }
+        }
+    }
+
+    // =========================================================
+    // HELPERS
+    // =========================================================
+
+    private void createRoleIfNotExists(String name, String description, Set<Permission> permissions) {
+        if (roleRepository.findByName(name).isEmpty()) {
+            roleRepository.save(Role.builder()
+                    .name(name)
+                    .description(description)
+                    .permissions(permissions)
+                    .build());
+            log.info("   🔐 Role created: {} ({} permissions)", name, permissions.size());
+        } else {
+            log.info("   🔐 Role [{}] already exists.", name);
+        }
+    }
+
+    private void createDeptIfNotExists(String name, String code,
+                                       BigDecimal quota, BigDecimal available) {
+        if (departmentRepository.findByCode(code).isEmpty()) {
+            departmentRepository.save(Department.builder()
+                    .name(name)
+                    .code(code)
+                    .totalProjectQuota(quota)
+                    .totalAvailableBalance(available)
+                    .build());
+            log.info("   🏢 Department created: {} [{}]", name, code);
+        } else {
+            log.info("   🏢 Department [{}] already exists.", code);
+        }
+    }
+
+    /**
+     * Creates a User + UserProfile + Wallet in one shot.
+     * Returns the persisted User (or null if already exists).
+     */
+    private User createUserIfNotExists(
+            String email, String employeeCode, String fullName,
+            Role role, Department department,
+            String jobTitle, String phone, String address,
+            String bankName, String bankAccount, String bankOwner) {
+
+        if (userRepository.findByEmail(email).isPresent()) {
+            log.info("   👤 User [{}] already exists.", email);
+            return userRepository.findByEmail(email).orElseThrow();
+        }
+
+        User user = User.builder()
+                .email(email)
+                .password(passwordEncoder.encode(DEFAULT_PASSWORD))
+                .fullName(fullName)
+                .role(role)
+                .department(department)
+                .status(UserStatus.ACTIVE)
+                .isFirstLogin(true)
+                .enabled(true)
+                .accountNonExpired(true)
+                .accountNonLocked(true)
+                .credentialsNonExpired(true)
+                .build();
+
+        user = userRepository.save(user);
+
+        // UserProfile
+        UserProfile profile = UserProfile.builder()
+                .user(user)
+                .employeeCode(employeeCode)
+                .jobTitle(jobTitle)
+                .phoneNumber(phone)
+                .address(address)
+                .bankName(bankName)
+                .bankAccountNum(bankAccount)
+                .bankAccountOwner(bankOwner)
+                .build();
+        user.setProfile(profile);
+        userRepository.save(user);
+
+        // Wallet
+        createWalletIfNotExists(user);
+
+        log.info("   👤 User created: {} | {} | {} | dept={}", employeeCode, fullName, email, department.getCode());
+        return user;
+    }
+
+    private void createWalletIfNotExists(User user) {
+        if (!walletRepository.existsByUserId(user.getId())) {
+            walletRepository.save(Wallet.builder()
+                    .user(user)
+                    .balance(BigDecimal.ZERO)
+                    .pendingBalance(BigDecimal.ZERO)
+                    .debtBalance(BigDecimal.ZERO)
+                    .build());
+        }
+    }
+
+    private void assignManagerToDept(Department dept, User manager) {
+        if (dept.getManager() == null) {
+            dept.setManager(manager);
+            departmentRepository.save(dept);
+            log.info("   🏢 Dept [{}] → manager set: {}", dept.getCode(), manager.getEmail());
+        }
+    }
+}
+
