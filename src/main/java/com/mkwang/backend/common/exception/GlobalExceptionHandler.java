@@ -66,6 +66,7 @@ public class GlobalExceptionHandler {
                         .success(false)
                         .message("Validation failed")
                         .data(errors)
+                        .timestamp(java.time.LocalDateTime.now())
                         .build());
     }
 
