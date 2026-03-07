@@ -10,8 +10,10 @@ import org.springframework.context.annotation.Configuration;
 import java.util.Map;
 
 /**
- * Cloudinary configuration - binds properties from application.yml
- * under the "cloudinary" prefix.
+ * Cloudinary SDK configuration — binds from application.yml prefix "cloudinary".
+ * <p>
+ * Chỉ chứa SDK connection params. Business params (root-folder, access-mode)
+ * nằm trong application.file-storage, inject trực tiếp vào FileStorageService.
  */
 @Configuration
 @ConfigurationProperties(prefix = "cloudinary")
