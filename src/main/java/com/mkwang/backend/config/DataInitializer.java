@@ -4,6 +4,8 @@ import com.mkwang.backend.modules.accounting.entity.SystemFund;
 import com.mkwang.backend.modules.accounting.repository.SystemFundRepository;
 import com.mkwang.backend.modules.config.entity.SystemConfig;
 import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
+import com.mkwang.backend.modules.expense.entity.ExpenseCategory;
+import com.mkwang.backend.modules.expense.repository.ExpenseCategoryRepository;
 import com.mkwang.backend.modules.organization.entity.Department;
 import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
 import com.mkwang.backend.modules.user.entity.*;
@@ -28,7 +30,7 @@ import java.util.Set;
  * Idempotent: safe to run on every startup. Only creates data that does not already exist.
  *
  * Seeding order (respects FK constraints):
- *   1. Roles + Permissions
+ *   1. Roles + Permissions (EMPLOYEE, TEAM_LEADER, MANAGER, ACCOUNTANT, ADMIN)
  *   2. Departments (manager_id = null initially, updated after users are created)
  *   3. Users (role + department assigned)
  *   4. Update Department managers
@@ -36,6 +38,7 @@ import java.util.Set;
  *   6. Wallets
  *   7. SystemFund
  *   8. SystemConfig
+ *   9. ExpenseCategories (system defaults)
  */
 @Slf4j
 @Component
@@ -48,6 +51,7 @@ public class DataInitializer implements CommandLineRunner {
     private final WalletRepository          walletRepository;
     private final SystemFundRepository      systemFundRepository;
     private final SystemConfigRepository    systemConfigRepository;
+    private final ExpenseCategoryRepository expenseCategoryRepository;
     private final PasswordEncoder           passwordEncoder;
 
     private static final String DEFAULT_PASSWORD     = "Ifms@2026";
@@ -68,6 +72,7 @@ public class DataInitializer implements CommandLineRunner {
         initUsers();
         initSystemFund();
         initSystemConfigs();
+        initExpenseCategories();
 
         log.info("╔══════════════════════════════════════════╗");
         log.info("║   ✅  DataInitializer completed OK       ║");
@@ -97,8 +102,31 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.PAYROLL_DOWNLOAD
         ));
 
-        // MANAGER – Trưởng phòng
-        createRoleIfNotExists("MANAGER", "Trưởng phòng – quản lý dự án, duyệt yêu cầu cấp 1", Set.of(
+        // TEAM_LEADER – Quản lý dự án (duyệt chi tiêu cá nhân — Luồng 1)
+        createRoleIfNotExists("TEAM_LEADER", "Quản lý dự án – duyệt MỌI chi tiêu Member, chia budget Phase/Category", Set.of(
+                Permission.USER_PROFILE_VIEW,
+                Permission.USER_PROFILE_UPDATE,
+                Permission.USER_PIN_UPDATE,
+                Permission.NOTIFICATION_VIEW,
+                Permission.WALLET_VIEW_SELF,
+                Permission.WALLET_DEPOSIT,
+                Permission.WALLET_WITHDRAW,
+                Permission.WALLET_TRANSACTION_VIEW,
+                Permission.PROJECT_VIEW_ACTIVE,
+                Permission.REQUEST_CREATE,
+                Permission.REQUEST_VIEW_SELF,
+                Permission.PAYROLL_VIEW_SELF,
+                Permission.PAYROLL_DOWNLOAD,
+                // Team Leader-specific
+                Permission.REQUEST_APPROVE_TEAM_LEADER,
+                Permission.PROJECT_CATEGORY_MANAGE,
+                Permission.PROJECT_BUDGET_ALLOCATE,
+                Permission.PROJECT_PHASE_MANAGE,
+                Permission.PROJECT_MEMBER_MANAGE
+        ));
+
+        // MANAGER – Trưởng phòng (duyệt cấp vốn dự án — Luồng 2)
+        createRoleIfNotExists("MANAGER", "Trưởng phòng – quản lý dự án, duyệt cấp vốn dự án", Set.of(
                 Permission.USER_PROFILE_VIEW,
                 Permission.USER_PROFILE_UPDATE,
                 Permission.USER_PIN_UPDATE,
@@ -119,7 +147,7 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.PROJECT_MEMBER_MANAGE,
                 Permission.PROJECT_STATUS_MANAGE,
                 Permission.REQUEST_VIEW_DEPT,
-                Permission.REQUEST_APPROVE_TIER1,
+                Permission.REQUEST_APPROVE_PROJECT_TOPUP,
                 Permission.REQUEST_REJECT,
                 Permission.DEPT_VIEW_DASHBOARD
         ));
@@ -175,6 +203,7 @@ public class DataInitializer implements CommandLineRunner {
 
         Role adminRole      = roleRepository.findByName("ADMIN").orElseThrow();
         Role managerRole    = roleRepository.findByName("MANAGER").orElseThrow();
+        Role teamLeaderRole = roleRepository.findByName("TEAM_LEADER").orElseThrow();
         Role accountantRole = roleRepository.findByName("ACCOUNTANT").orElseThrow();
         Role employeeRole   = roleRepository.findByName("EMPLOYEE").orElseThrow();
 
@@ -212,6 +241,14 @@ public class DataInitializer implements CommandLineRunner {
                 managerRole, sales,
                 "Sales Manager", "0901000004", "TP.HCM",
                 "ACB", "0011004000004", "NGUYEN HONG SON"
+        );
+
+        // ---- TEAM LEADERS ----
+        User teamLeadIT = createUserIfNotExists(
+                "tl.it@ifms.vn", "MK008", "Hoàng Minh Tuấn",
+                teamLeaderRole, it,
+                "Technical Lead", "0901000009", "Hà Nội",
+                "VCB", "0011004000009", "HOANG MINH TUAN"
         );
 
         // ---- EMPLOYEES ----
@@ -279,7 +316,6 @@ public class DataInitializer implements CommandLineRunner {
                 new Object[]{"PIN_MAX_RETRY",           "5",            "Số lần nhập sai PIN tối đa trước khi bị khóa"},
                 new Object[]{"PIN_LOCK_MINUTES",        "30",           "Thời gian khóa PIN (phút) sau khi vượt quá số lần thử"},
                 new Object[]{"WITHDRAW_AUTO_APPROVE_LIMIT", "5000000",  "Số tiền rút tối đa tự động duyệt (VND). Vượt ngưỡng sẽ chuyển Pending cho Accountant duyệt"},
-                new Object[]{"REQUEST_TIER1_LIMIT",     "20000000",     "Hạn mức duyệt cấp 1 của Manager (VND). Vượt ngưỡng tự leo thang lên Admin"},
                 new Object[]{"PAYROLL_ADVANCE_NETTING", "true",         "Tự động trừ nợ tạm ứng khi chi lương (true/false)"},
                 new Object[]{"SYSTEM_MAINTENANCE_MODE", "false",        "Chế độ bảo trì hệ thống – chặn toàn bộ giao dịch nếu true"},
                 new Object[]{"DEFAULT_CURRENCY",        "VND",          "Đơn vị tiền tệ mặc định của hệ thống"},
@@ -302,6 +338,33 @@ public class DataInitializer implements CommandLineRunner {
                                 .build()
                 );
                 log.info("   ⚙️  Config [{}] = {}", key, value);
+            }
+        }
+    }
+
+    // =========================================================
+    // 6. EXPENSE CATEGORIES (System defaults)
+    // =========================================================
+    private void initExpenseCategories() {
+        log.info("── [6/6] Seeding Expense Categories ...");
+
+        List<Object[]> categories = List.of(
+                new Object[]{"Travel & Accommodation", "Công tác phí, di chuyển, khách sạn, vé máy bay"},
+                new Object[]{"Equipment & Software", "Mua sắm thiết bị, bản quyền phần mềm, server, license"},
+                new Object[]{"Meals & Entertainment", "Ăn uống, tiếp khách, team building, sự kiện"},
+                new Object[]{"Outsourcing & Services", "Thuê ngoài, dịch vụ tư vấn, freelancer"}
+        );
+
+        for (Object[] row : categories) {
+            String name = (String) row[0];
+            String desc = (String) row[1];
+            if (expenseCategoryRepository.findByName(name).isEmpty()) {
+                expenseCategoryRepository.save(ExpenseCategory.builder()
+                        .name(name)
+                        .description(desc)
+                        .isSystemDefault(true)
+                        .build());
+                log.info("   📂 Category created: {}", name);
             }
         }
     }
