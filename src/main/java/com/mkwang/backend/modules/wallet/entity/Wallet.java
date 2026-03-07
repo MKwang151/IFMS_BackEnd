@@ -9,7 +9,9 @@ import java.math.BigDecimal;
 
 /**
  * Wallet entity - Core wallet for each user.
- * Uses Optimistic Locking (@Version) to handle concurrent transactions.
+ * Concurrency Strategy:
+ *   - Primary: Pessimistic Lock via findByIdForUpdate() in Repository
+ *   - Safety Net: @Version (Optimistic Locking) as fallback for edge cases
  */
 @Entity
 @Table(name = "wallets")

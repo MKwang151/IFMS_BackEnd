@@ -47,4 +47,27 @@ public class Department extends BaseEntity {
   @Column(name = "total_available_balance", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal totalAvailableBalance = BigDecimal.ZERO;
+
+  /**
+   * Optimistic locking for concurrent budget updates.
+   */
+  @Version
+  private Long version;
+
+  // ======================== Business Logic ========================
+
+  /**
+   * Receive quota from System Fund (when Admin approves QUOTA_TOPUP).
+   */
+  public void receiveQuota(BigDecimal amount) {
+    this.totalProjectQuota = this.totalProjectQuota.add(amount);
+    this.totalAvailableBalance = this.totalAvailableBalance.add(amount);
+  }
+
+  /**
+   * Allocate budget to Project Fund (when Manager approves PROJECT_TOPUP).
+   */
+  public void allocateToProject(BigDecimal amount) {
+    this.totalAvailableBalance = this.totalAvailableBalance.subtract(amount);
+  }
 }

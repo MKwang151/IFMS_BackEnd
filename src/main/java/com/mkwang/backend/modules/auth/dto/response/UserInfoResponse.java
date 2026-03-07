@@ -1,6 +1,5 @@
 package com.mkwang.backend.modules.auth.dto.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,7 +20,6 @@ public class UserInfoResponse {
 
   private String email;
 
-  @JsonProperty("full_name")
   private String fullName;
 
   private String role;

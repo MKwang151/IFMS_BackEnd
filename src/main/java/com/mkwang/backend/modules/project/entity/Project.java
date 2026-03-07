@@ -12,7 +12,8 @@ import java.util.List;
 
 /**
  * Project entity - Represents a project with lifecycle management.
- * Budget is allocated per Phase, not directly from project.
+ * Acts as Project Fund (Tier 3) in the 4-tier fund architecture.
+ * available_budget tracks real-time available money (increases on PROJECT_TOPUP, decreases on payout).
  */
 @Entity
 @Table(name = "projects", indexes = {
@@ -52,6 +53,16 @@ public class Project extends BaseEntity {
   @Builder.Default
   private BigDecimal totalBudget = BigDecimal.ZERO;
 
+  /**
+   * Project Fund — real available budget.
+   * Increases when Manager approves PROJECT_TOPUP.
+   * Decreases when Accountant pays out expense requests.
+   * Must always be >= 0.
+   */
+  @Column(name = "available_budget", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
+  @Builder.Default
+  private BigDecimal availableBudget = BigDecimal.ZERO;
+
   @Column(name = "total_spent", precision = 19, scale = 2, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal totalSpent = BigDecimal.ZERO;
@@ -74,6 +85,14 @@ public class Project extends BaseEntity {
   private List<ProjectMember> members = new ArrayList<>();
 
   /**
+   * Optimistic locking for concurrent budget updates.
+   */
+  @Version
+  private Long version;
+
+  // ======================== Business Logic ========================
+
+  /**
    * Check if project allows new requests
    */
   public boolean isRequestable() {
@@ -84,6 +103,21 @@ public class Project extends BaseEntity {
    * Add spent amount to total
    */
   public void addSpent(BigDecimal amount) {
+    this.totalSpent = this.totalSpent.add(amount);
+  }
+
+  /**
+   * Add budget from Department Fund (when PROJECT_TOPUP is approved).
+   */
+  public void addBudget(BigDecimal amount) {
+    this.availableBudget = this.availableBudget.add(amount);
+  }
+
+  /**
+   * Deduct budget when Accountant pays out an expense request.
+   */
+  public void deductBudget(BigDecimal amount) {
+    this.availableBudget = this.availableBudget.subtract(amount);
     this.totalSpent = this.totalSpent.add(amount);
   }
 }

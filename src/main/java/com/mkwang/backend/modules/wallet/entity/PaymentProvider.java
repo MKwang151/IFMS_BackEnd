@@ -1,9 +1,12 @@
 package com.mkwang.backend.modules.wallet.entity;
 
+/**
+ * Enum representing the payment gateway provider.
+ * Matches Database.md transactions.gateway_provider field.
+ */
 public enum PaymentProvider {
-    PAYOS,          // Cổng VietQR
-    MOMO,           // Ví điện tử MoMo
-    VNPAY,          // Cổng VNPay
-    ZALOPAY,        // Ví ZaloPay
-    INTERNAL_WALLET // Giao dịch nội bộ (ví dụ: hoàn ứng, trả lương)
+    PAYOS,      // Cổng VietQR (PayOS)
+    MOMO,       // Ví điện tử MoMo
+    VNPAY,      // Cổng VNPay
+    INTERNAL    // Giao dịch nội bộ (hoàn ứng, trả lương, cấp vốn)
 }
