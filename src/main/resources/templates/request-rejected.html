@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="vi">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Đơn yêu cầu bị từ chối</title>
+    <style>
+        body, table, td, p, h1, h2 {
+            margin: 0; padding: 0;
+            font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+        }
+        body { background-color: #f4f6f9; }
+        .email-wrapper { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            padding: 30px 40px; text-align: center;
+        }
+        .header h1 { color: #ffffff; font-size: 20px; font-weight: 700; }
+        .header p { color: #fecaca; font-size: 13px; margin-top: 6px; }
+        .icon-x {
+            display: inline-block; width: 48px; height: 48px;
+            background-color: rgba(255,255,255,0.2); border-radius: 50%;
+            line-height: 48px; font-size: 24px; margin-bottom: 12px; color: #fff;
+        }
+        .content { padding: 30px 40px; }
+        .greeting { font-size: 15px; color: #374151; margin-bottom: 20px; line-height: 1.6; }
+        .detail-box {
+            background-color: #fef2f2; border: 1px solid #fecaca;
+            border-radius: 8px; padding: 20px; margin-bottom: 20px;
+        }
+        .detail-row {
+            display: flex; justify-content: space-between;
+            padding: 8px 0; border-bottom: 1px solid #fee2e2; font-size: 14px;
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { color: #6b7280; }
+        .detail-value { color: #111827; font-weight: 600; }
+        .reason-box {
+            background-color: #fff7ed; border: 1px solid #fed7aa;
+            border-left: 4px solid #f97316; border-radius: 6px;
+            padding: 14px 18px; margin: 20px 0;
+        }
+        .reason-box .reason-title {
+            font-size: 13px; font-weight: 700; color: #9a3412; margin-bottom: 6px;
+        }
+        .reason-box .reason-text {
+            font-size: 14px; color: #431407; line-height: 1.5;
+        }
+        .note {
+            background-color: #f0f9ff; border: 1px solid #bae6fd;
+            border-left: 4px solid #0284c7; border-radius: 6px;
+            padding: 14px 18px; font-size: 13px; color: #0c4a6e; line-height: 1.5;
+        }
+        .footer {
+            background-color: #f9fafb; padding: 24px 40px;
+            text-align: center; border-top: 1px solid #e5e7eb;
+        }
+        .footer p { font-size: 12px; color: #9ca3af; line-height: 1.6; }
+    </style>
+</head>
+<body style="background-color: #f4f6f9; padding: 20px 0;">
+<div class="email-wrapper">
+
+    <!-- Header -->
+    <div class="header">
+        <div class="icon-x">✕</div>
+        <h1>ĐƠN YÊU CẦU BỊ TỪ CHỐI</h1>
+        <p>Internal Finance Management System</p>
+    </div>
+
+    <!-- Body -->
+    <div class="content">
+        <p class="greeting">
+            Xin chào <strong th:text="${employeeName}">Nguyễn Văn A</strong>,<br/>
+            Rất tiếc, đơn yêu cầu của bạn đã bị từ chối.
+        </p>
+
+        <div class="detail-box">
+            <div class="detail-row">
+                <span class="detail-label">Mã đơn</span>
+                <span class="detail-value" th:text="${requestCode}">REQ-IT-0326-001</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Loại yêu cầu</span>
+                <span class="detail-value" th:text="${requestType}">Tạm ứng</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Số tiền yêu cầu</span>
+                <span class="detail-value" th:text="${amount}">5,000,000 VNĐ</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Người từ chối</span>
+                <span class="detail-value" th:text="${rejectorName}">Trần Văn B</span>
+            </div>
+        </div>
+
+        <div class="reason-box">
+            <div class="reason-title">📝 Lý do từ chối:</div>
+            <div class="reason-text" th:text="${rejectReason}">
+                Chứng từ đính kèm không hợp lệ. Vui lòng bổ sung hóa đơn VAT và tạo đơn mới.
+            </div>
+        </div>
+
+        <div class="note">
+            <strong>ℹ️ Hướng dẫn:</strong> Bạn có thể tạo đơn yêu cầu mới sau khi bổ sung
+            chứng từ và thông tin cần thiết. Nếu cần hỗ trợ, vui lòng liên hệ quản lý trực tiếp.
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p><strong>IFMS — Internal Finance Management System</strong></p>
+        <p>Email này được gửi tự động. Vui lòng không trả lời trực tiếp.</p>
+        <p>© 2026 MKWANG. All rights reserved.</p>
+    </div>
+
+</div>
+</body>
+</html>
+
