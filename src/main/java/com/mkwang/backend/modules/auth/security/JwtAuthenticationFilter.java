@@ -2,12 +2,15 @@ package com.mkwang.backend.modules.auth.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mkwang.backend.common.dto.ApiResponse;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,7 +29,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;   // Inject Spring-managed singleton (Jackson auto-config)
+
+    private static final String BEARER_PREFIX = "Bearer ";
 
     @Override
     protected void doFilterInternal(
@@ -35,75 +40,73 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        // Skip filter for public endpoints
-        if (request.getServletPath().contains("/api/v1/auth")) {
+        // Skip filter for public endpoints (SecurityConfig whitelist handles this,
+        // but early return avoids unnecessary header parsing)
+        if (request.getServletPath().startsWith("/api/v1/auth")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        final String authHeader = request.getHeader("Authorization");
-
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
             filterChain.doFilter(request, response);
             return;
         }
+
+        final String jwt = authHeader.substring(BEARER_PREFIX.length());
 
         try {
-            final String jwt = authHeader.substring(7);
             final String userEmail = jwtService.extractUsername(jwt);
 
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+                UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
 
-                // Check account status before validating token
-                if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
-                    String errorMessage = !userDetails.isEnabled()
-                            ? "User account is disabled"
-                            : "User account is locked";
-
-                    log.warn("Authentication failed for user {}: {}", userEmail, errorMessage);
-                    sendErrorResponse(response, "Unauthorized: " + errorMessage);
-                    return; // Stop filter chain
+                // Check account status
+                if (!userDetails.isEnabled()) {
+                    sendErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
+                            "Account is disabled. Contact administrator.");
+                    return;
+                }
+                if (!userDetails.isAccountNonLocked()) {
+                    sendErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
+                            "Account is locked. Contact administrator.");
+                    return;
                 }
 
-                // Validate token and check if it's revoked
+                // Validate token
                 if (!jwtService.isTokenValid(jwt, userDetails)) {
-                    log.warn("Invalid or revoked token for user {}", userEmail);
-                    sendErrorResponse(response, "Unauthorized: Invalid or revoked token");
-                    return; // Stop filter chain
+                    sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                            "Invalid or expired token.");
+                    return;
                 }
 
-                // Set authentication in context
+                // Set authentication in SecurityContext
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
+                        userDetails, null, userDetails.getAuthorities());
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
 
             filterChain.doFilter(request, response);
 
+        } catch (ExpiredJwtException e) {
+            log.debug("Expired JWT for user: {}", e.getClaims().getSubject());
+            sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "Token has expired. Please refresh your token.");
+        } catch (JwtException e) {
+            log.warn("Invalid JWT: {}", e.getMessage());
+            sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "Invalid token.");
         } catch (Exception e) {
-            log.error("Unexpected authentication error: {}", e.getMessage(), e);
-            sendErrorResponse(response, "Unauthorized: Authentication failed");
+            log.error("Authentication error: {}", e.getMessage(), e);
+            sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "Authentication failed.");
         }
     }
 
-    /**
-     * Helper method to write error response in JSON format
-     * Cannot use ResponseEntity here because we're in Filter layer, not Controller layer
-     */
-    private void sendErrorResponse(HttpServletResponse response, String errorMessage) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-        response.getWriter().write(
-                objectMapper.writeValueAsString(
-                        ApiResponse.error(errorMessage)
-                )
-        );
-        response.getWriter().flush();
+    private void sendErrorResponse(HttpServletResponse response, int status, String message) throws IOException {
+        response.setStatus(status);
+        response.setContentType("application/json;charset=UTF-8");
+        objectMapper.writeValue(response.getOutputStream(), ApiResponse.error(message));
     }
 }
