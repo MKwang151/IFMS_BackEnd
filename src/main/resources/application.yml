@@ -1,13 +1,23 @@
 spring:
   application:
-    name: SpringProjectTemplate
+    name: IFMS-Backend
 
-  # Database Configuration
+  # ── Database + HikariCP Connection Pool ────────────────────
+  # Tối ưu cho ~1000 concurrent requests
+  # Formula: pool-size = (core_count * 2) + disk_spindles ≈ 20-30 cho production
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:IFMSdb}
     username: ${DB_USERNAME:IFMSadmin}
     password: ${DB_PASSWORD:IFMS}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 10                   # Connections giữ sẵn khi idle
+      maximum-pool-size: 30              # Max connections trong pool (1000 req / ~30-50ms per query)
+      idle-timeout: 300000               # 5 phút — đóng idle connection sau thời gian này
+      max-lifetime: 1800000              # 30 phút — recycle connection tránh DB timeout
+      connection-timeout: 5000           # 5 giây — throw exception nếu không lấy được connection
+      leak-detection-threshold: 30000    # 30 giây — log warning nếu connection bị giữ quá lâu
+      pool-name: IFMS-HikariPool
 
   jpa:
     hibernate:
@@ -17,35 +27,123 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false                  # Tắt OSIV — tránh lazy loading trong controller layer
 
-  # Flyway Database Migration
+  # ── Flyway Database Migration ──────────────────────────────
   flyway:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
 
-# Cloudinary Configuration
+  # ── Mail (SMTP) ────────────────────────────────────────────
+  # Default: Gmail SMTP. Override bằng env vars cho SendGrid/AWS SES.
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:noreply@ifms.vn}
+    password: ${MAIL_PASSWORD:your_app_password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+    default-encoding: UTF-8
+
+  # ── Thymeleaf (HTML Email Templates) ───────────────────────
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+    check-template-location: false       # Không fail nếu chưa có template lúc startup
+
+  # ── Jackson (JSON Serialization) ───────────────────────────
+  jackson:
+    default-property-inclusion: non_null       # Loại bỏ trường null → giảm payload size
+    serialization:
+      write-dates-as-timestamps: false         # LocalDateTime → "2026-03-02T10:15:30" (ISO-8601)
+      fail-on-empty-beans: false               # Không throw khi serialize empty object
+    deserialization:
+      fail-on-unknown-properties: false        # Không throw khi nhận field lạ từ client
+    date-format: yyyy-MM-dd'T'HH:mm:ss        # Fallback format cho java.util.Date
+
+  # ── Async Task Executor ────────────────────────────────────
+  # Core pool xử lý mail, notification gửi ngầm qua @Async
+  task:
+    execution:
+      pool:
+        core-size: 10                    # Thread sẵn sàng
+        max-size: 20                     # Max thread khi queue đầy
+        queue-capacity: 100              # Hàng đợi trước khi tạo thread mới
+      thread-name-prefix: ifms-async-
+
+  # ── Redis (Message Queue for Email, Caching) ────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}           # Blank = no auth (dev mode)
+      timeout: 5000ms
+      lettuce:
+        pool:
+          min-idle: 2
+          max-idle: 8
+          max-active: 16                     # Max concurrent Redis connections
+          max-wait: 3000ms                   # Wait time if pool exhausted
+
+  # ── Servlet (File Upload Limit) ────────────────────────────
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+# ── Cloudinary (SDK Connection Only) ───────────────────────
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:your_cloud_name}
   api-key: ${CLOUDINARY_API_KEY:your_api_key}
   api-secret: ${CLOUDINARY_API_SECRET:your_api_secret}
 
-# Application Security Configuration
+# ── Application Security ───────────────────────────────────
 application:
   security:
     jwt:
       secret-key: ${JWT_SECRET_KEY:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
-      expiration: 1800000 # 30 minutes in milliseconds
+      expiration: ${JWT_EXPIRATION:1800000}                        # 30 minutes
       refresh-token:
-        expiration: 604800000 # 7 days in milliseconds
+        expiration: ${JWT_REFRESH_EXPIRATION:604800000}            # 7 days
+    pin:
+      length: ${PIN_LENGTH:5}
+      max-retry: ${PIN_MAX_RETRY:5}
+      lock-minutes: ${PIN_LOCK_MINUTES:30}
+  mail:
+    from: ${MAIL_FROM:IFMS System <noreply@ifms.vn>}
+    queue-name: ${MAIL_QUEUE_NAME:ifms:email:queue}
+    dead-letter-queue: ${MAIL_DLQ_NAME:ifms:email:dead-letter}
+    max-retry: ${MAIL_MAX_RETRY:3}
+    worker-poll-ms: ${MAIL_WORKER_POLL_MS:2000}
+    batch-size: ${MAIL_BATCH_SIZE:10}
+  file-storage:
+    root-folder: ${CLOUDINARY_ROOT_FOLDER:ifms}
+    access-mode: ${CLOUDINARY_ACCESS_MODE:authenticated}
 
-# Server Configuration
+# ── Server ─────────────────────────────────────────────────
 server:
   port: ${SERVER_PORT:8080}
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+    min-response-size: 1024              # Nén response > 1KB
 
-# Logging Configuration
+# ── Logging ────────────────────────────────────────────────
 logging:
   level:
     root: INFO
-    com.mkwang.springprojecttemplate: DEBUG
-    org.springframework.security: DEBUG
+    com.mkwang.backend: ${LOG_LEVEL:DEBUG}
+    org.springframework.security: WARN
+    com.zaxxer.hikari: INFO              # Monitor connection pool
+    org.flywaydb: INFO
