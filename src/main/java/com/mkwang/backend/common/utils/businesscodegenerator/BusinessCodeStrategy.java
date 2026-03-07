@@ -1,4 +1,4 @@
-package com.mkwang.backend.common.utils;
+package com.mkwang.backend.common.utils.businesscodegenerator;
 
 /**
  * Strategy Pattern Interface — Hợp đồng mà tất cả chiến lược sinh Business Code phải tuân thủ.

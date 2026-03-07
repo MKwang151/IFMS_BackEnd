@@ -1,14 +1,14 @@
-package com.mkwang.backend.common.utils.strategy;
+package com.mkwang.backend.common.utils.businesscodegenerator.strategy;
 
-import com.mkwang.backend.common.utils.BusinessCodeStrategy;
-import com.mkwang.backend.common.utils.BusinessCodeType;
-import com.mkwang.backend.common.utils.CodeFormatUtils;
+import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeStrategy;
+import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
+import com.mkwang.backend.common.utils.businesscodegenerator.CodeFormatUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 
-import static com.mkwang.backend.common.utils.CodeFormatUtils.padLeft;
+import static com.mkwang.backend.common.utils.businesscodegenerator.CodeFormatUtils.padLeft;
 
 /**
  * Project Code Strategy — Format: PRJ-{SLUG}-{YYYY}-{SEQ:03d}

@@ -1,4 +1,4 @@
-package com.mkwang.backend.common.utils;
+package com.mkwang.backend.common.utils.businesscodegenerator;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

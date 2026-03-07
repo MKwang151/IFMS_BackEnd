@@ -1,12 +1,12 @@
-package com.mkwang.backend.common.utils.strategy;
+package com.mkwang.backend.common.utils.businesscodegenerator.strategy;
 
-import com.mkwang.backend.common.utils.BusinessCodeStrategy;
-import com.mkwang.backend.common.utils.BusinessCodeType;
-import com.mkwang.backend.common.utils.CodeFormatUtils;
+import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeStrategy;
+import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
+import com.mkwang.backend.common.utils.businesscodegenerator.CodeFormatUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import static com.mkwang.backend.common.utils.CodeFormatUtils.padLeft;
+import static com.mkwang.backend.common.utils.businesscodegenerator.CodeFormatUtils.padLeft;
 
 /**
  * MK{SEQ:03d} → MK008, MK009, MK100
