@@ -56,15 +56,14 @@ public enum Permission {
   // --- Team Leader ---
   PROJECT_CATEGORY_MANAGE("Quản lý danh mục chi tiêu dự án (gán Category cho Phase)"),
   PROJECT_BUDGET_ALLOCATE("Phân bổ ngân sách Phase/Category trong dự án"),
-
-  // --- Team Leader + Manager ---
   PROJECT_PHASE_MANAGE("Quản lý Phase (Tạo mới, Cấp vốn Phase, Đóng/Mở Phase)"),
   PROJECT_MEMBER_MANAGE("Thêm hoặc Xóa thành viên khỏi dự án"),
 
   // --- Manager ---
   PROJECT_CREATE("Khởi tạo dự án mới"),
-  PROJECT_UPDATE("Cập nhật thông tin chung dự án (Tên, Deadline)"),
+  PROJECT_UPDATE("Cập nhật thông tin chung dự án (Tên, Mô tả, Ngân sách)"),
   PROJECT_STATUS_MANAGE("Tạm dừng (Pause) chặn chi tiêu hoặc Đóng (Close) dự án"),
+  PROJECT_ASSIGN_LEADER("Chỉ định hoặc thay đổi Team Leader cho dự án"),
 
   // --- Admin/Accountant ---
   PROJECT_VIEW_ALL("Xem danh sách tất cả dự án (Để Audit/Chi tiền)"),

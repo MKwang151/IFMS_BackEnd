@@ -126,7 +126,7 @@ public class DataInitializer implements CommandLineRunner {
         ));
 
         // MANAGER – Trưởng phòng (duyệt cấp vốn dự án — Luồng 2)
-        createRoleIfNotExists("MANAGER", "Trưởng phòng – quản lý dự án, duyệt cấp vốn dự án", Set.of(
+        createRoleIfNotExists("MANAGER", "Trưởng phòng – tạo dự án, chỉ định Team Leader, duyệt cấp vốn dự án", Set.of(
                 Permission.USER_PROFILE_VIEW,
                 Permission.USER_PROFILE_UPDATE,
                 Permission.USER_PIN_UPDATE,
@@ -143,9 +143,8 @@ public class DataInitializer implements CommandLineRunner {
                 // Manager-specific
                 Permission.PROJECT_CREATE,
                 Permission.PROJECT_UPDATE,
-                Permission.PROJECT_PHASE_MANAGE,
-                Permission.PROJECT_MEMBER_MANAGE,
                 Permission.PROJECT_STATUS_MANAGE,
+                Permission.PROJECT_ASSIGN_LEADER,
                 Permission.REQUEST_VIEW_DEPT,
                 Permission.REQUEST_APPROVE_PROJECT_TOPUP,
                 Permission.REQUEST_REJECT,

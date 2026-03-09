@@ -88,11 +88,12 @@ Hệ thống sử dụng **5 vai trò** theo mô hình Ngân sách Phân quyền
 | **REQUEST_APPROVE_TEAM_LEADER** 🟢 | | ✅ | | | ✅ |
 | **PROJECT_CATEGORY_MANAGE** 🟢 | | ✅ | | | ✅ |
 | **PROJECT_BUDGET_ALLOCATE** 🟢 | | ✅ | | | ✅ |
-| PROJECT_PHASE_MANAGE | | ✅ | ✅ | | ✅ |
-| PROJECT_MEMBER_MANAGE | | ✅ | ✅ | | ✅ |
+| **PROJECT_PHASE_MANAGE** | | ✅ | | | ✅ |
+| **PROJECT_MEMBER_MANAGE** | | ✅ | | | ✅ |
 | PROJECT_CREATE | | | ✅ | | ✅ |
 | PROJECT_UPDATE | | | ✅ | | ✅ |
 | PROJECT_STATUS_MANAGE | | | ✅ | | ✅ |
+| **PROJECT_ASSIGN_LEADER** 🟢 | | | ✅ | | ✅ |
 | REQUEST_VIEW_DEPT | | | ✅ | | ✅ |
 | **REQUEST_APPROVE_PROJECT_TOPUP** 🟢 | | | ✅ | | ✅ |
 | REQUEST_REJECT | | | ✅ | | ✅ |
@@ -194,6 +195,7 @@ Hệ thống sử dụng **5 vai trò** theo mô hình Ngân sách Phân quyền
 * **id** (PK, BigInt, Auto-increment)
 * **project_code** (Varchar, Unique, Not Null): Mã định danh dự án (Cost Center). Format: `PRJ-ERP-2026`. Auto-generated at application layer.
 * **name** (Varchar): Tên dự án.
+* **description** (Text, Nullable): Mô tả chi tiết dự án.
 * **department_id** (FK): Liên kết bảng `departments`.
 * **manager_id** (FK): Liên kết bảng `users` (PM / Team Leader quản lý dự án).
 * **total_budget** (Decimal): Tổng ngân sách dự kiến (Kế hoạch).
@@ -216,8 +218,8 @@ Hệ thống sử dụng **5 vai trò** theo mô hình Ngân sách Phân quyền
 ### `project_members` (Thành viên dự án)
 * **project_id** (PK, FK): Liên kết bảng `projects`.
 * **user_id** (PK, FK): Liên kết bảng `users`.
-* **project_role** (Enum, Not Null): Cấp bậc phân quyền logic trong dự án. Values: `LEADER` (Team Leader — toàn quyền duyệt/chia budget), `MEMBER` (Thành viên — chỉ tạo Request).
-* **position** (Varchar, Nullable): Chức danh hiển thị tự do (VD: "Backend Dev", "Tester", "BA", "AI Engineer"). Không ảnh hưởng logic phân quyền — chỉ dùng cho UI/Report.
+* **project_role** (Enum, Not Null): Cấp bậc phân quyền logic trong dự án. Values: `LEADER` (Team Leader — do Manager chỉ định khi tạo project, toàn quyền duyệt/chia budget/quản lý member), `MEMBER` (Thành viên — do Team Leader thêm vào, chỉ tạo Request).
+* **position** (Varchar, Nullable): Chức danh hiển thị tự do (VD: "Backend Dev", "Tester", "BA", "AI Engineer"). Không ảnh hưởng logic phân quyền — chỉ dùng cho UI/Report. Team Leader gán khi thêm member.
 * **joined_at** (Timestamp): Ngày tham gia.
 
 ### `expense_categories` (Danh mục chi tiêu)
