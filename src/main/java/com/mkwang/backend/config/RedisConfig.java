@@ -1,54 +1,136 @@
 package com.mkwang.backend.config;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+import java.time.Duration;
+
 /**
- * Redis configuration — uses StringRedisSerializer for both key and value.
+ * Redis configuration — dual-purpose:
+ * <ol>
+ * <li><b>Manual cache</b>: {@code RedisTemplate<String,String>} — used by
+ * {@code JwtService}
+ * for token version cache, stored as plain String (fast, debuggable).</li>
+ * <li><b>Spring Cache abstraction</b>: {@code RedisCacheManager} — supports
+ * {@code @Cacheable},
+ * {@code @CacheEvict}, {@code @CachePut} annotations with JSON
+ * serialization.</li>
+ * </ol>
+ *
  * <p>
- * WHY String serializer instead of JdkSerializationRedisSerializer?
+ * WHY GenericJackson2JsonRedisSerializer for Cache Manager?
  * <ul>
- *   <li><b>Human-readable:</b> Stored data in Redis is plain JSON strings,
- *       debuggable with redis-cli or RedisInsight.</li>
- *   <li><b>No class-path coupling:</b> JDK serializer embeds Java class metadata
- *       into the bytes — any class rename/move breaks deserialization.</li>
- *   <li><b>Cross-language:</b> Other services (Node.js, Python) can read/write
- *       the same Redis queue if needed.</li>
- *   <li><b>Smaller payload:</b> JSON string is ~30-50% smaller than JDK serialized bytes.</li>
+ * <li>Stores values as human-readable JSON (debuggable in RedisInsight).</li>
+ * <li>Embeds type metadata {@code @class} into JSON — allows safe
+ * deserialization back to
+ * original DTO/Entity type without explicit type casting.</li>
+ * <li>Supports Java 8 date/time (LocalDateTime) via
+ * {@code JavaTimeModule}.</li>
+ * <li>No classpath coupling issues of JDK serializer.</li>
  * </ul>
- * <p>
- * JSON serialization/deserialization is handled explicitly via Jackson ObjectMapper
- * in the Producer and Worker classes, giving us full control over the format.
  */
 @Configuration
+@EnableCaching
 public class RedisConfig {
 
-    /**
-     * RedisTemplate<String, String> — serialize everything as plain strings.
-     * <p>
-     * The Producer will serialize EmailPayload → JSON String → LPUSH.
-     * The Worker will RPOP → JSON String → deserialize to EmailPayload.
-     *
-     * @param connectionFactory auto-configured by Spring Boot from application.yml
-     * @return configured RedisTemplate
-     */
-    @Bean
-    public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory connectionFactory) {
-        RedisTemplate<String, String> template = new RedisTemplate<>();
-        template.setConnectionFactory(connectionFactory);
+        /** Default TTL for @Cacheable entries, injected from application.yml */
+        @Value("${spring.cache.redis.time-to-live:3600000}")
+        private long defaultCacheTtlMs;
 
-        // Both key and value use String serializer
-        StringRedisSerializer serializer = new StringRedisSerializer();
-        template.setKeySerializer(serializer);
-        template.setValueSerializer(serializer);
-        template.setHashKeySerializer(serializer);
-        template.setHashValueSerializer(serializer);
+        // ── Manual Cache: RedisTemplate<String, String> ─────────────────────────
+        // Used by JwtService.cacheTokenVersion() — plain String → fastest,
+        // human-readable.
 
-        template.afterPropertiesSet();
-        return template;
-    }
+        /**
+         * RedisTemplate<String, String> for manual key-value operations.
+         * Both keys and values are plain Strings — no serialization overhead.
+         */
+        @Bean
+        public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory connectionFactory) {
+                RedisTemplate<String, String> template = new RedisTemplate<>();
+                template.setConnectionFactory(connectionFactory);
+
+                StringRedisSerializer serializer = new StringRedisSerializer();
+                template.setKeySerializer(serializer);
+                template.setValueSerializer(serializer);
+                template.setHashKeySerializer(serializer);
+                template.setHashValueSerializer(serializer);
+
+                template.afterPropertiesSet();
+                return template;
+        }
+
+        // ── Spring Cache Abstraction: RedisCacheManager ─────────────────────────
+        // Used by @Cacheable, @CacheEvict, @CachePut — stores objects as JSON with type
+        // metadata.
+
+        /**
+         * Custom ObjectMapper for Cache serialization ONLY — NOT exposed as Spring Bean
+         * to prevent Spring MVC from using it as the global Jackson mapper.
+         * - JavaTimeModule: support LocalDate, LocalDateTime, ZonedDateTime
+         * - WRITE_DATES_AS_TIMESTAMPS: false → ISO-8601 format in Redis
+         * - Default typing NON_FINAL: embed "@class" for safe deserialization from
+         * Redis
+         */
+        private ObjectMapper buildCacheObjectMapper() {
+                ObjectMapper mapper = new ObjectMapper();
+                mapper.registerModule(new JavaTimeModule());
+                mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+                mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+                mapper.activateDefaultTyping(
+                                LaissezFaireSubTypeValidator.instance,
+                                ObjectMapper.DefaultTyping.NON_FINAL,
+                                JsonTypeInfo.As.PROPERTY);
+                return mapper;
+        }
+
+        /**
+         * RedisCacheManager — backing store for Spring Cache annotations.
+         * <ul>
+         * <li>Default TTL: configured via {@code spring.cache.redis.time-to-live}
+         * (ms).</li>
+         * <li>Key serializer: StringRedisSerializer → human-readable keys.</li>
+         * <li>Value serializer: GenericJackson2JsonRedisSerializer with custom
+         * ObjectMapper.</li>
+         * <li>Null values are NOT cached → prevents stale null pollution.</li>
+         * <li>Key prefix enabled → namespaces keys by cache name (e.g.
+         * "users::1").</li>
+         * </ul>
+         */
+        @Bean
+        public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
+                GenericJackson2JsonRedisSerializer valueSerializer = new GenericJackson2JsonRedisSerializer(
+                                buildCacheObjectMapper());
+
+                RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
+                                .entryTtl(Duration.ofMillis(defaultCacheTtlMs)) // Default TTL from config
+                                .disableCachingNullValues() // Don't cache null results
+                                .prefixCacheNameWith("") // Use Spring default "cacheName::" prefix
+                                .serializeKeysWith(
+                                                RedisSerializationContext.SerializationPair
+                                                                .fromSerializer(new StringRedisSerializer()))
+                                .serializeValuesWith(
+                                                RedisSerializationContext.SerializationPair
+                                                                .fromSerializer(valueSerializer));
+
+                return RedisCacheManager.builder(connectionFactory)
+                                .cacheDefaults(cacheConfig)
+                                .transactionAware() // Sync cache ops with DB @Transactional boundaries
+                                .build();
+        }
 }
-
