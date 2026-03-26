@@ -417,16 +417,12 @@ public class DataInitializer implements CommandLineRunner {
 
         User user = User.builder()
                 .email(email)
-                .password(passwordEncoder.encode(DEFAULT_PASSWORD))
                 .fullName(fullName)
-                .role(role)
                 .department(department)
+                .password(passwordEncoder.encode(DEFAULT_PASSWORD))
+                .role(role)
                 .status(UserStatus.ACTIVE)
                 .isFirstLogin(true)
-                .enabled(true)
-                .accountNonExpired(true)
-                .accountNonLocked(true)
-                .credentialsNonExpired(true)
                 .build();
 
         user = userRepository.save(user);

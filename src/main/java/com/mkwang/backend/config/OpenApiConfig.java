@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.enums.SecuritySchemeIn;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.annotations.info.Contact;
 import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
 import io.swagger.v3.oas.annotations.servers.Server;
 import org.springframework.context.annotation.Configuration;
@@ -12,17 +13,19 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @OpenAPIDefinition(
         info = @Info(
-                title = "Spring Project Template API",
+                title = "IFMS Backend API",
                 version = "1.0",
-                description = "REST API documentation for Spring Project Template",
+                description = "Internal Financial Management System — REST API",
                 contact = @Contact(
                         name = "Developer",
-                        email = "developer@example.com"
+                        email = "developer@mkwang.com"
                 )
         ),
         servers = {
                 @Server(url = "http://localhost:8080", description = "Local Development Server")
-        }
+        },
+        // Global security: mọi endpoint đều yêu cầu Bearer token (trừ các endpoint được override)
+        security = @SecurityRequirement(name = "bearerAuth")
 )
 @SecurityScheme(
         name = "bearerAuth",

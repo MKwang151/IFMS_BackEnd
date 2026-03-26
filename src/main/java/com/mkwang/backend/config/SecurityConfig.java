@@ -30,14 +30,19 @@ public class SecurityConfig {
         private final AuthenticationProvider authenticationProvider;
         private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
-        // Public endpoints that don't require authentication
+        // Public endpoints — change-password, me, logout yêu cầu authenticated
         private static final String[] WHITE_LIST_URLS = {
-                        "/api/v1/auth/**",
+                        "/api/v1/auth/login",
+                        "/api/v1/auth/refresh-token",
+                        "/api/v1/auth/forgot-password",
+                        "/api/v1/auth/reset-password",
                         "/api/v1/test/public",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
-                        "/actuator/**"
+                        "/actuator/**",
+                        // WebSocket handshake — JWT auth handled at STOMP channel level
+                        "/ws/**"
         };
 
         @Bean
