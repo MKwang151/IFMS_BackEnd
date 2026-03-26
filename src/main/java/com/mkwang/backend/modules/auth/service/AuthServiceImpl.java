@@ -1,16 +1,17 @@
 package com.mkwang.backend.modules.auth.service;
 
 import com.mkwang.backend.common.exception.BadRequestException;
+import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.exception.UnauthorizedException;
+import com.mkwang.backend.modules.auth.dto.request.ChangePasswordRequest;
+import com.mkwang.backend.modules.auth.dto.request.ForgotPasswordRequest;
+import com.mkwang.backend.modules.auth.dto.request.LoginRequest;
+import com.mkwang.backend.modules.auth.dto.request.ResetPasswordRequest;
 import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
-import com.mkwang.backend.modules.auth.dto.request.LoginRequest;
-import com.mkwang.backend.modules.auth.dto.request.RegisterRequest;
 import com.mkwang.backend.modules.auth.security.JwtService;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
-import com.mkwang.backend.modules.user.entity.Role;
 import com.mkwang.backend.modules.user.entity.User;
-import com.mkwang.backend.modules.user.repository.RoleRepository;
 import com.mkwang.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,50 +21,20 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.stream.Collectors;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
-    private static final String DEFAULT_ROLE = "USER";
+    // ── POST /auth/login ─────────────────────────────────────────
 
     @Override
     @Transactional
-    public AuthenticationResponse register(RegisterRequest request) {
-        // Check if email already exists
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new BadRequestException("Email already registered");
-        }
-
-        // Get default USER role from database
-        Role defaultRole = roleRepository.findByName(DEFAULT_ROLE)
-                .orElseThrow(() -> new BadRequestException(
-                        "Default role not found. Please contact admin."));
-
-        // Create new user
-        User user = User.builder()
-                .fullName(request.getFirstName() + " " + request.getLastName())
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(defaultRole)
-                .enabled(true)
-                .build();
-
-        userRepository.save(user);
-        log.info("User registered successfully: {}", user.getEmail());
-
-        return generateTokenResponse(user);
-    }
-
-    @Override
     public AuthenticationResponse login(LoginRequest request) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
@@ -73,17 +44,21 @@ public class AuthServiceImpl implements AuthService {
         var user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
 
-        // Revoke ALL old refresh tokens khi login mới → Token Rotation
-        jwtService.revokeAllUserTokens(user);
+        // Single-session: tăng tokenVersion → invalidate mọi token cũ
+        user.setTokenVersion(user.getTokenVersion() + 1);
+        userRepository.save(user);
+
+        // Cache version mới vào Redis
+        jwtService.cacheTokenVersion(user.getId(), user.getTokenVersion());
 
         log.info("User logged in: {}", user.getEmail());
         return generateTokenResponse(user);
     }
 
+    // ── POST /auth/refresh-token ─────────────────────────────────
+
     @Override
-    @Transactional
     public AuthenticationResponse refreshToken(String refreshToken) {
-        // Validate token format and extract username safely
         String userEmail;
         try {
             userEmail = jwtService.extractUsername(refreshToken);
@@ -99,46 +74,123 @@ public class AuthServiceImpl implements AuthService {
         var user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UnauthorizedException("User not found"));
 
-        // Create UserDetailsAdapter for token validation
         UserDetailsAdapter userDetails = new UserDetailsAdapter(user);
 
-        // Use isRefreshTokenValid to check DB revocation status
+        // Stateless: chỉ check chữ ký + expiry + version
         if (!jwtService.isRefreshTokenValid(refreshToken, userDetails)) {
-            throw new UnauthorizedException("Invalid or revoked refresh token");
+            throw new UnauthorizedException("Invalid or expired refresh token");
         }
 
-        // Token Rotation: revoke OLD refresh token → issue new pair
-        // Chống Refresh Token Replay Attack
-        jwtService.revokeToken(refreshToken);
+        if (!jwtService.isTokenVersionValid(refreshToken, user.getId())) {
+            throw new UnauthorizedException("Session expired. Please login again.");
+        }
 
         log.info("Token refreshed for user: {}", user.getEmail());
-        return generateTokenResponse(user);
+        return generateTokenResponse(user); // giữ tokenVersion hiện tại
     }
 
+    // ── POST /auth/logout ────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public void logout(String accessToken) {
+        try {
+            String userEmail = jwtService.extractUsername(accessToken);
+            var user = userRepository.findByEmail(userEmail)
+                    .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+            // Stateless logout: tăng tokenVersion → mọi token hiện tại đều bị invalidate
+            user.setTokenVersion(user.getTokenVersion() + 1);
+            userRepository.save(user);
+            jwtService.cacheTokenVersion(user.getId(), user.getTokenVersion());
+
+            log.info("User logged out: {}", userEmail);
+        } catch (Exception e) {
+            log.warn("Logout failed: {}", e.getMessage());
+            throw new UnauthorizedException("Invalid token");
+        }
+    }
+
+    // ── POST /auth/forgot-password ───────────────────────────────
+
+    @Override
+    public void forgotPassword(ForgotPasswordRequest request) {
+        var userOpt = userRepository.findByEmail(request.getEmail());
+        if (userOpt.isEmpty()) {
+            log.debug("Forgot password requested for non-existing email: {}", request.getEmail());
+            return; // Silent — không leak thông tin email tồn tại
+        }
+        // TODO: Generate reset token, lưu DB, gửi email qua BrevoMailService
+        log.info("Password reset requested for: {}", request.getEmail());
+    }
+
+    // ── POST /auth/reset-password ────────────────────────────────
+
+    @Override
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new BadRequestException("Passwords do not match");
+        }
+        // TODO: Validate reset token từ DB (bảng password_reset_tokens)
+        throw new BadRequestException("Password reset token validation not yet implemented");
+    }
+
+    // ── POST /auth/change-password ───────────────────────────────
+
+    @Override
+    @Transactional
+    public void changePassword(ChangePasswordRequest request, String username) {
+        var user = userRepository.findByEmail(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (!user.getIsFirstLogin()) {
+            throw new BadRequestException("This endpoint is only for first login password change");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setIsFirstLogin(false);
+        userRepository.save(user);
+
+        log.info("First login password changed for: {}", username);
+    }
+
+    // ── GET /auth/me ─────────────────────────────────────────────
+
+    @Override
+    public UserInfoResponse getCurrentUser(String username) {
+        var user = userRepository.findByEmail(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        return buildUserInfo(user);
+    }
+
+    // ── Private helpers ──────────────────────────────────────────
+
     private AuthenticationResponse generateTokenResponse(User user) {
-        // Use Adapter Pattern to convert User to UserDetails
         UserDetailsAdapter userDetails = new UserDetailsAdapter(user);
+        int version = user.getTokenVersion();
 
-        var accessToken = jwtService.generateToken(userDetails);
-        var refreshToken = jwtService.generateRefreshToken(userDetails);
-
-        // Build user info with role and permissions
-        UserInfoResponse userInfo = UserInfoResponse.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .fullName(user.getFullName())
-                .role(user.getRole().getName())
-                .permissions(user.getRole().getPermissions().stream()
-                        .map(Enum::name)
-                        .collect(Collectors.toSet()))
-                .build();
+        var accessToken = jwtService.generateToken(userDetails, version);
+        var refreshToken = jwtService.generateRefreshToken(userDetails, version);
 
         return AuthenticationResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
-                .tokenType("Bearer")
-                .expiresIn(jwtService.getJwtExpiration() / 1000) // Convert to seconds
-                .user(userInfo)
+                .user(buildUserInfo(user))
+                .build();
+    }
+
+    private UserInfoResponse buildUserInfo(User user) {
+        return UserInfoResponse.builder()
+                .id(user.getId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .role(user.getRole().getName())
+                .departmentId(user.getDepartment() != null ? user.getDepartment().getId() : null)
+                .departmentName(user.getDepartment() != null ? user.getDepartment().getName() : null)
+                .avatar(null)
+                .isFirstLogin(user.getIsFirstLogin())
+                .status(user.getStatus().name())
                 .build();
     }
 }

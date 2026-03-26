@@ -1,65 +1,63 @@
 package com.mkwang.backend.modules.auth.security;
 
-import com.mkwang.backend.modules.auth.entity.JwtToken;
-import com.mkwang.backend.modules.auth.entity.TokenType;
-import com.mkwang.backend.modules.auth.repository.JwtTokenRepository;
 import com.mkwang.backend.modules.user.entity.User;
+import com.mkwang.backend.modules.user.repository.UserRepository;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SecurityException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
-import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * JWT Service — quản lý toàn bộ vòng đời token.
+ * JWT Service — Stateless JWT với Single-Session enforcement qua tokenVersion.
  * <p>
- * Tối ưu:
+ * Kiến trúc:
  * <ul>
- *   <li>{@code SecretKey} decode 1 lần duy nhất khi bean khởi tạo (không decode mỗi request)</li>
- *   <li>{@code JwtParser} build 1 lần, reuse thread-safe (không tạo mới mỗi lần parse)</li>
- *   <li>Access Token chứa roles + permissions claim → Filter không cần query DB authorities</li>
- *   <li>Mỗi token có {@code jti} (JWT ID) → trace, audit, revoke chính xác từng token</li>
+ *   <li>Access Token + Refresh Token đều KHÔNG lưu vào DB — pure stateless.</li>
+ *   <li>Single-session + logout: tăng {@code tokenVersion} trong User entity và Redis cache.</li>
+ *   <li>Mỗi token chứa claim {@code "ver"} → Filter so sánh với Redis/DB để validate.</li>
  * </ul>
  */
 @Slf4j
 @Service
 public class JwtService {
 
-    private final JwtTokenRepository jwtTokenRepository;
+    private final UserRepository userRepository;
+    private final RedisTemplate<String, String> redisTemplate;
 
-    /** Decode 1 lần khi bean init — tránh BASE64.decode() mỗi request */
     private final SecretKey signingKey;
-
-    /** Build 1 lần, thread-safe — tránh Jwts.parser().verifyWith().build() mỗi request */
     private final JwtParser jwtParser;
-
     private final long jwtExpiration;
     private final long refreshExpiration;
 
+    private static final String TOKEN_VERSION_PREFIX = "token_ver:";
+    private static final String VERSION_CLAIM = "ver";
+
     public JwtService(
-            JwtTokenRepository jwtTokenRepository,
+            UserRepository userRepository,
+            RedisTemplate<String, String> redisTemplate,
             @Value("${application.security.jwt.secret-key}") String secretKey,
             @Value("${application.security.jwt.expiration}") long jwtExpiration,
             @Value("${application.security.jwt.refresh-token.expiration}") long refreshExpiration) {
-        this.jwtTokenRepository = jwtTokenRepository;
+        this.userRepository = userRepository;
+        this.redisTemplate = redisTemplate;
         this.jwtExpiration = jwtExpiration;
         this.refreshExpiration = refreshExpiration;
 
-        // Decode SecretKey 1 lần duy nhất
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
 
-        // Build JwtParser 1 lần — thread-safe, reuse cho mọi request
         this.jwtParser = Jwts.parser()
                 .verifyWith(this.signingKey)
                 .build();
@@ -71,26 +69,25 @@ public class JwtService {
         return extractClaim(token, Claims::getSubject);
     }
 
-    public String extractJti(String token) {
-        return extractClaim(token, Claims::getId);
+    /**
+     * Extract token version ("ver" claim) từ JWT.
+     * Trả 0 nếu claim không tồn tại (token cũ trước khi có single-session).
+     */
+    public Integer extractTokenVersion(String token) {
+        return extractClaim(token, claims -> {
+            Object ver = claims.get(VERSION_CLAIM);
+            return ver instanceof Number ? ((Number) ver).intValue() : 0;
+        });
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
+        return claimsResolver.apply(extractAllClaims(token));
     }
 
-    /**
-     * Parse & verify token. Reuse cached JwtParser (thread-safe).
-     * Phân biệt rõ: expired vs malformed vs invalid signature.
-     */
     private Claims extractAllClaims(String token) {
         try {
-            return jwtParser
-                    .parseSignedClaims(token)
-                    .getPayload();
+            return jwtParser.parseSignedClaims(token).getPayload();
         } catch (ExpiredJwtException e) {
-            // Token hợp lệ nhưng hết hạn — vẫn trả Claims để extract username cho logging
             log.debug("JWT expired for subject: {}", e.getClaims().getSubject());
             throw e;
         } catch (SecurityException | MalformedJwtException e) {
@@ -102,36 +99,19 @@ public class JwtService {
         }
     }
 
-    // ── Generate Tokens ────────────────────────────────────────
+    // ── Generate Tokens (Stateless — không lưu DB) ─────────────
 
-    public String generateToken(UserDetails userDetails) {
-        return generateToken(Map.of(), userDetails);
+    public String generateToken(UserDetails userDetails, int tokenVersion) {
+        return buildToken(userDetails, tokenVersion, jwtExpiration);
     }
 
-    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
-        return buildToken(extraClaims, userDetails, jwtExpiration);
+    public String generateRefreshToken(UserDetails userDetails, int tokenVersion) {
+        return buildToken(userDetails, tokenVersion, refreshExpiration);
     }
 
-    public String generateRefreshToken(UserDetails userDetails) {
-        String token = buildToken(Map.of(), userDetails, refreshExpiration);
-        saveToken(token, userDetails, refreshExpiration, TokenType.REFRESH);
-        return token;
-    }
-
-    /**
-     * Build JWT với:
-     * - jti (JWT ID) — unique ID cho mỗi token, dùng để trace & revoke
-     * - roles claim — ROLE_ADMIN, ROLE_USER (prefix ROLE_)
-     * - permissions claim — READ_USER, WRITE_USER, etc.
-     */
-    private String buildToken(
-            Map<String, Object> extraClaims,
-            UserDetails userDetails,
-            long expiration) {
-
+    private String buildToken(UserDetails userDetails, int tokenVersion, long expiration) {
         long now = System.currentTimeMillis();
 
-        // Tách roles vs permissions từ authorities
         Collection<? extends GrantedAuthority> authorities = userDetails.getAuthorities();
         List<String> roles = authorities.stream()
                 .map(GrantedAuthority::getAuthority)
@@ -142,23 +122,27 @@ public class JwtService {
                 .filter(a -> !a.startsWith("ROLE_"))
                 .collect(Collectors.toList());
 
-        Map<String, Object> claims = new HashMap<>(extraClaims);
+        Map<String, Object> claims = new HashMap<>();
+        claims.put(VERSION_CLAIM, tokenVersion);
         claims.put("roles", roles);
         claims.put("permissions", permissions);
 
         return Jwts.builder()
-                .id(UUID.randomUUID().toString())       // jti — unique per token
+                .id(UUID.randomUUID().toString())
                 .claims(claims)
                 .subject(userDetails.getUsername())
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + expiration))
-                .signWith(signingKey)                    // Reuse cached key
+                .signWith(signingKey)
                 .compact();
     }
 
     // ── Validate Tokens ────────────────────────────────────────
 
-    /** Access token — stateless, chỉ verify signature + expiry */
+    /**
+     * Validate Access Token: kiểm tra chữ ký + hạn sử dụng (stateless).
+     * Version được kiểm tra riêng ở {@link #isTokenVersionValid}.
+     */
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
             final String username = extractUsername(token);
@@ -168,58 +152,66 @@ public class JwtService {
         }
     }
 
-    /** Refresh token — stateful, check DB revocation */
+    /**
+     * Validate Refresh Token: kiểm tra chữ ký + hạn sử dụng.
+     * Stateless — không check DB revoked nữa, version check thay thế.
+     */
     public boolean isRefreshTokenValid(String token, UserDetails userDetails) {
-        try {
-            final String username = extractUsername(token);
-            return username.equals(userDetails.getUsername())
-                    && !isTokenExpired(token)
-                    && !jwtTokenRepository.existsByTokenAndRevokedTrue(token);
-        } catch (JwtException e) {
-            return false;
-        }
+        return isTokenValid(token, userDetails);
     }
 
     private boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+        return extractClaim(token, Claims::getExpiration).before(new Date());
     }
 
-    private Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
+    // ── Token Version — Redis + DB ─────────────────────────────
+
+    /**
+     * Lưu tokenVersion vào Redis với TTL = refreshExpiration.
+     * Key: "token_ver:{userId}"
+     */
+    public void cacheTokenVersion(Long userId, int version) {
+        String key = TOKEN_VERSION_PREFIX + userId;
+        redisTemplate.opsForValue().set(key, String.valueOf(version),
+                refreshExpiration, TimeUnit.MILLISECONDS);
+        log.debug("Cached token version: userId={}, version={}", userId, version);
     }
 
-    // ── Token Persistence (Refresh only) ───────────────────────
-
-    private void saveToken(String token, UserDetails userDetails, long expiration, TokenType tokenType) {
-        UserDetailsAdapter adapter = (UserDetailsAdapter) userDetails;
-        User user = adapter.getUser();
-
-        JwtToken jwtToken = JwtToken.builder()
-                .token(token)
-                .user(user)
-                .tokenType(tokenType)
-                .expiryDate(LocalDateTime.now().plusSeconds(expiration / 1000))
-                .revoked(false)
-                .build();
-
-        jwtTokenRepository.save(jwtToken);
+    /**
+     * Xóa Redis cache khi không cần giữ version nữa (vd: sau logout nếu muốn clean).
+     */
+    public void evictTokenVersionCache(Long userId) {
+        redisTemplate.delete(TOKEN_VERSION_PREFIX + userId);
     }
 
-    // ── Revocation ─────────────────────────────────────────────
-
-    public void revokeToken(String token) {
-        jwtTokenRepository.findByToken(token).ifPresent(jwtToken -> {
-            jwtToken.setRevoked(true);
-            jwtToken.setRevokedAt(LocalDateTime.now());
-            jwtTokenRepository.save(jwtToken);
-        });
+    /**
+     * Lấy tokenVersion: ưu tiên Redis → fallback DB.
+     */
+    public int getTokenVersion(Long userId) {
+        String key = TOKEN_VERSION_PREFIX + userId;
+        String cached = redisTemplate.opsForValue().get(key);
+        if (cached != null) {
+            return Integer.parseInt(cached);
+        }
+        // Fallback: query DB + re-cache
+        int dbVersion = userRepository.findById(userId)
+                .map(User::getTokenVersion)
+                .orElse(0);
+        cacheTokenVersion(userId, dbVersion);
+        return dbVersion;
     }
 
-    public void revokeAllUserTokens(User user) {
-        jwtTokenRepository.revokeAllUserTokens(user, LocalDateTime.now());
+    /**
+     * Kiểm tra version trong token có khớp version hệ thống không.
+     * version_trong_token < version_hệ_thống → đã login/logout ở thiết bị khác.
+     */
+    public boolean isTokenVersionValid(String token, Long userId) {
+        int tokenVersion = extractTokenVersion(token);
+        int currentVersion = getTokenVersion(userId);
+        return tokenVersion >= currentVersion;
     }
 
-    // ── Getters for config values ──────────────────────────────
+    // ── Getters ────────────────────────────────────────────────
 
     public long getJwtExpiration() { return jwtExpiration; }
     public long getRefreshExpiration() { return refreshExpiration; }

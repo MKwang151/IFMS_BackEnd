@@ -1,6 +1,7 @@
 package com.mkwang.backend.modules.auth.security;
 
 import com.mkwang.backend.modules.user.entity.User;
+import com.mkwang.backend.modules.user.entity.UserStatus;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
@@ -43,25 +44,21 @@ public class UserDetailsAdapter implements UserDetails {
 
     @Override
     public boolean isAccountNonExpired() {
-        return user.isAccountNonExpired();
+        return true; // Không dùng tính năng account expire
     }
 
     @Override
     public boolean isAccountNonLocked() {
-        return user.isAccountNonLocked();
+        return user.getStatus() != UserStatus.LOCKED;
     }
 
     @Override
     public boolean isCredentialsNonExpired() {
-        return user.isCredentialsNonExpired();
+        return true; // Không dùng tính năng password expire
     }
 
     @Override
     public boolean isEnabled() {
-        return user.isEnabled();
-    }
-
-    public User getUser() {
-        return user;
+        return user.getStatus() == UserStatus.ACTIVE;
     }
 }

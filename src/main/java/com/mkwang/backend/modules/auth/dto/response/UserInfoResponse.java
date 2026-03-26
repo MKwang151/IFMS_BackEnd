@@ -5,10 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Set;
-
 /**
- * User info included in login response for FE to display correct UI
+ * User info theo API Spec — dùng trong login response và GET /auth/me.
  */
 @Data
 @Builder
@@ -16,13 +14,21 @@ import java.util.Set;
 @NoArgsConstructor
 public class UserInfoResponse {
 
-  private Long id;
+    private Long id;
 
-  private String email;
+    private String fullName;
 
-  private String fullName;
+    private String email;
 
-  private String role;
+    private String role;
 
-  private Set<String> permissions;
+    private Long departmentId;
+
+    private String departmentName;
+
+    private String avatar;
+
+    private Boolean isFirstLogin;
+
+    private String status;
 }

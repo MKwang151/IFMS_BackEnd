@@ -1,7 +1,5 @@
 package com.mkwang.backend.modules.auth.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mkwang.backend.common.dto.ApiResponse;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -12,6 +10,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -22,6 +23,16 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * JWT Authentication Filter — verify token + enforce single-session (token version).
+ * <p>
+ * Flow bổ sung cho single-session:
+ * <pre>
+ *   1. Extract "ver" claim từ token
+ *   2. Lấy version hiện tại từ Redis (fallback DB)
+ *   3. Nếu ver_token < ver_hệ_thống → 401 "Tài khoản đã đăng nhập ở thiết bị khác"
+ * </pre>
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -29,7 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
-    private final ObjectMapper objectMapper;   // Inject Spring-managed singleton (Jackson auto-config)
+    private final JwtAuthenticationEntryPoint authenticationEntryPoint;
 
     private static final String BEARER_PREFIX = "Bearer ";
 
@@ -40,9 +51,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        // Skip filter for public endpoints (SecurityConfig whitelist handles this,
-        // but early return avoids unnecessary header parsing)
-        if (request.getServletPath().startsWith("/api/v1/auth")) {
+        // Skip filter for public auth endpoints only
+        String path = request.getServletPath();
+        if (path.equals("/api/v1/auth/login")
+                || path.equals("/api/v1/auth/refresh-token")
+                || path.equals("/api/v1/auth/forgot-password")
+                || path.equals("/api/v1/auth/reset-password")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -63,20 +77,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 // Check account status
                 if (!userDetails.isEnabled()) {
-                    sendErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
-                            "Account is disabled. Contact administrator.");
+                    authenticationEntryPoint.commence(request, response,
+                            new DisabledException("Account is disabled. Contact administrator."));
                     return;
                 }
                 if (!userDetails.isAccountNonLocked()) {
-                    sendErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
-                            "Account is locked. Contact administrator.");
+                    authenticationEntryPoint.commence(request, response,
+                            new LockedException("Account is locked. Contact administrator."));
                     return;
                 }
 
-                // Validate token
+                // Validate token signature + expiry
                 if (!jwtService.isTokenValid(jwt, userDetails)) {
-                    sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
-                            "Invalid or expired token.");
+                    authenticationEntryPoint.commence(request, response,
+                            new BadCredentialsException("Invalid or expired token."));
+                    return;
+                }
+
+                // ── Single-session check: version trong token vs Redis/DB ──
+                UserDetailsAdapter adapter = (UserDetailsAdapter) userDetails;
+                Long userId = adapter.getUser().getId();
+
+                if (!jwtService.isTokenVersionValid(jwt, userId)) {
+                    log.info("Token version mismatch for user: {} — session invalidated by new login", userEmail);
+                    authenticationEntryPoint.commence(request, response,
+                            new BadCredentialsException("Tài khoản đã đăng nhập ở thiết bị khác."));
                     return;
                 }
 
@@ -91,22 +116,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         } catch (ExpiredJwtException e) {
             log.debug("Expired JWT for user: {}", e.getClaims().getSubject());
-            sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
-                    "Token has expired. Please refresh your token.");
+            authenticationEntryPoint.commence(request, response,
+                    new BadCredentialsException("Token has expired. Please refresh your token.", e));
         } catch (JwtException e) {
             log.warn("Invalid JWT: {}", e.getMessage());
-            sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
-                    "Invalid token.");
+            authenticationEntryPoint.commence(request, response,
+                    new BadCredentialsException("Invalid token.", e));
         } catch (Exception e) {
             log.error("Authentication error: {}", e.getMessage(), e);
-            sendErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
-                    "Authentication failed.");
+            authenticationEntryPoint.commence(request, response,
+                    new BadCredentialsException("Authentication failed.", e));
         }
-    }
-
-    private void sendErrorResponse(HttpServletResponse response, int status, String message) throws IOException {
-        response.setStatus(status);
-        response.setContentType("application/json;charset=UTF-8");
-        objectMapper.writeValue(response.getOutputStream(), ApiResponse.error(message));
     }
 }

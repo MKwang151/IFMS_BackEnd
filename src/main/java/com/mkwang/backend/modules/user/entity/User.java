@@ -49,33 +49,24 @@ public class User extends BaseEntity {
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
 
+    /**
+     * Token version — tăng 1 mỗi lần login mới.
+     * So sánh với claim "ver" trong JWT để enforce single-session.
+     */
+    @Column(name = "token_version", nullable = false)
+    @Builder.Default
+    private Integer tokenVersion = 0;
+
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private UserProfile profile;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private UserSecuritySettings securitySettings;
 
-    // Spring Security fields
-    @Column(nullable = false)
-    @Builder.Default
-    private boolean enabled = true;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private boolean accountNonExpired = true;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private boolean accountNonLocked = true;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private boolean credentialsNonExpired = true;
-
     /**
      * Check if user account is active
      */
     public boolean isActive() {
-        return status == UserStatus.ACTIVE && enabled && accountNonLocked;
+        return status == UserStatus.ACTIVE;
     }
 }
