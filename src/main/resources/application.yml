@@ -83,6 +83,28 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 20MB
+  # ── rabbitMQ ────────────────────────────
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    mail:
+      exchange: ${RABBITMQ_MAIL_EXCHANGE:mailExchange}
+      dlx: ${RABBITMQ_MAIL_DLX:mailDLX}
+      onboard:
+        queue: ${RABBITMQ_MAIL_ONBOARD_QUEUE:mailOnboardQueue}
+        routing-key: ${RABBITMQ_MAIL_ONBOARD_ROUTING_KEY:mailOnboard}
+        dlq: ${RABBITMQ_MAIL_ONBOARD_DLQ:mailOnboardDLQ}
+        dlq-routing-key: ${RABBITMQ_MAIL_ONBOARD_DLQ_ROUTING_KEY:mailOnboardDead}
+    audit:
+      exchange: ${RABBITMQ_AUDIT_EXCHANGE:auditExchange}
+      dlx: ${RABBITMQ_AUDIT_DLX:auditDLX}
+      queue: ${RABBITMQ_AUDIT_QUEUE:auditQueue}
+      routing-key: ${RABBITMQ_AUDIT_ROUTING_KEY:audit}
+      dlq: ${RABBITMQ_AUDIT_DLQ:auditDLQ}
+      dlq-routing-key: ${RABBITMQ_AUDIT_DLQ_ROUTING_KEY:auditDead}
+
 
 # ── Cloudinary (SDK Connection Only) ───────────────────────
 cloudinary:
@@ -126,3 +148,5 @@ logging:
     org.springframework.security: WARN
     com.zaxxer.hikari: INFO              # Monitor connection pool
     org.flywaydb: INFO
+
+

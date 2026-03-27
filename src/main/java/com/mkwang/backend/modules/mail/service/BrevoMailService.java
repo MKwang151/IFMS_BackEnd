@@ -1,24 +1,16 @@
 package com.mkwang.backend.modules.mail.service;
 
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import com.mkwang.backend.modules.mail.consumers.TestMail;
 
 /**
  * BrevoMailService — Gửi email qua Brevo Transactional API v3.
  * <p>
- * Mọi method đều @Async("mailExecutor") — không block caller thread.
- * Return CompletableFuture<Boolean>: true = thành công, false = thất bại (logged).
+ * Các method được gọi đồng bộ từ RabbitMQ listener thread (đã là background thread).
+ * Concurrency được quản lý bởi {@code concurrency} của {@code @RabbitListener}.
+ * Return boolean: true = thành công, false = thất bại (logged).
  */
 public interface BrevoMailService {
 
-    /**
-     * Gửi email HTML tùy ý. Method nền cho tất cả nghiệp vụ.
-     *
-     * @param to          email người nhận
-     * @param subject     tiêu đề email
-     * @param htmlContent nội dung HTML đầy đủ
-     */
-    CompletableFuture<Boolean> sendHtml(String to, String subject, String htmlContent);
-
-
+    boolean sendOnBoard(String to, String subject, String content);
+    boolean sendTest(TestMail email);
 }

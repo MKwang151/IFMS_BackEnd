@@ -1,16 +1,15 @@
 package com.mkwang.backend.modules.mail.service;
 
+import com.mkwang.backend.modules.mail.consumers.TestMail;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * BrevoMailServiceImpl — Gửi email qua Brevo Transactional API v3.
@@ -18,8 +17,9 @@ import java.util.concurrent.CompletableFuture;
  * POST https://api.brevo.com/v3/smtp/email
  * Header: api-key: <BREVO_API_KEY>
  * <p>
- * Mọi method gọi sendHtml() nền — không cần queue, không cần Redis.
- * @Async("mailExecutor") đảm bảo không block API thread.
+ * Method chạy đồng bộ — không cần @Async vì được gọi từ RabbitMQ listener thread
+ * (đã là background thread, không block HTTP request).
+ * Concurrency được điều khiển bởi concurrency="2-5" trong @RabbitListener.
  */
 @Slf4j
 @Service
@@ -28,7 +28,6 @@ public class BrevoMailServiceImpl implements BrevoMailService {
     private static final String BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
     private final RestClient restClient;
-    private final String apiKey;
     private final String fromEmail;
     private final String fromName;
 
@@ -36,7 +35,6 @@ public class BrevoMailServiceImpl implements BrevoMailService {
             @Value("${application.mail.brevo-api-key}") String apiKey,
             @Value("${application.mail.from-email}") String fromEmail,
             @Value("${application.mail.from-name}") String fromName) {
-        this.apiKey = apiKey;
         this.fromEmail = fromEmail;
         this.fromName = fromName;
         this.restClient = RestClient.builder()
@@ -48,15 +46,14 @@ public class BrevoMailServiceImpl implements BrevoMailService {
 
     // ── Core send ────────────────────────────────────────────────
 
-    @Async("mailExecutor")
     @Override
-    public CompletableFuture<Boolean> sendHtml(String to, String subject, String htmlContent) {
+    public boolean sendOnBoard(String to, String subject, String content) {
         try {
             Map<String, Object> body = Map.of(
                     "sender", Map.of("name", fromName, "email", fromEmail),
                     "to", List.of(Map.of("email", to)),
                     "subject", subject,
-                    "htmlContent", htmlContent);
+                    "htmlContent", content);
 
             var response = restClient.post()
                     .body(body)
@@ -65,12 +62,35 @@ public class BrevoMailServiceImpl implements BrevoMailService {
 
             log.info("[Brevo] HTTP={} | to={} | subject={}", response.getStatusCode(), to, subject);
             log.debug("[Brevo] Response body: {}", response.getBody());
-            return CompletableFuture.completedFuture(true);
+            return true;
 
         } catch (Exception e) {
-            log.error("Failed to send email via Brevo: to={}, subject={}, error={}", to, subject, e.getMessage(), e);
-            return CompletableFuture.completedFuture(false);
+            log.error("[Brevo] Failed to send email: to={}, subject={}, error={}", to, subject, e.getMessage(), e);
+            return false;
         }
     }
 
+    @Override
+    public boolean sendTest(TestMail email) {
+        try {
+            Map<String, Object> body = Map.of(
+                    "sender", Map.of("name", fromName, "email", fromEmail),
+                    "to", List.of(Map.of("email", email.to())),
+                    "subject", email.subject(),
+                    "htmlContent", email.content());
+
+            var response = restClient.post()
+                    .body(body)
+                    .retrieve()
+                    .toEntity(String.class);
+
+            log.info("[Brevo] HTTP={} | to={} | subject={}", response.getStatusCode(), email.to(), email.subject());
+            log.debug("[Brevo] Response body: {}", response.getBody());
+            return true;
+
+        } catch (Exception e) {
+            log.error("[Brevo] Failed to send email: to={}, subject={}, error={}", email.to(), email.subject(), e.getMessage(), e);
+            return false;
+        }
+    }
 }
