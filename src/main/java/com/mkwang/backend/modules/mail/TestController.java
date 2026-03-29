@@ -1,6 +1,6 @@
 package com.mkwang.backend.modules.mail;
 
-import com.mkwang.backend.modules.mail.consumers.TestMail;
+import com.mkwang.backend.modules.mail.consumers.MailEvent;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ public class TestController {
 
     @PostMapping("/test")
     public ResponseEntity<String> test(
-            @RequestBody TestMail mail
+            @RequestBody MailEvent mail
     ) {
         rabbitTemplate.convertAndSend(exchange, routingKey, mail);
         return ResponseEntity

@@ -1,6 +1,6 @@
 package com.mkwang.backend.modules.mail.service;
 
-import com.mkwang.backend.modules.mail.consumers.TestMail;
+import com.mkwang.backend.modules.mail.consumers.MailEvent;
 
 /**
  * BrevoMailService — Gửi email qua Brevo Transactional API v3.
@@ -12,5 +12,5 @@ import com.mkwang.backend.modules.mail.consumers.TestMail;
 public interface BrevoMailService {
 
     boolean sendOnBoard(String to, String subject, String content);
-    boolean sendTest(TestMail email);
+    boolean sendTest(MailEvent email);
 }

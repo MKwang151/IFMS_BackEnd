@@ -12,10 +12,10 @@ import org.springframework.stereotype.Service;
 /**
  * MailConsumer — nhận message từ RabbitMQ và gửi email qua Brevo.
  * <p>
- * Retry flow:
+ * Retry flow (áp dụng cho tất cả queue):
  * <ol>
  *   <li>Brevo call thất bại → Spring AMQP Retry tự thử lại (3 lần, exponential backoff 3s→9s)</li>
- *   <li>Hết 3 lần → NACK → RabbitMQ route sang DLQ</li>
+ *   <li>Hết 3 lần → NACK → RabbitMQ route sang DLQ tương ứng</li>
  *   <li>DLQ consumer log WARN để alert/monitor</li>
  * </ol>
  * concurrency="2-5": Spring AMQP tạo từ 2 đến 5 listener thread tự động.
@@ -28,30 +28,39 @@ public class MailConsumer {
 
     BrevoMailService mailService;
 
-    // ── Main listener ────────────────────────────────────────────
+    // ── OnBoard ──────────────────────────────────────────────────
 
-    @RabbitListener(
-            queues = "${spring.rabbitmq.mail.onboard.queue}",
-            concurrency = "2-5"
-    )
-    public void consumeOnBoard(TestMail email) {
+    @RabbitListener(queues = "${spring.rabbitmq.mail.onboard.queue}", concurrency = "2-5")
+    public void consumeOnBoard(MailEvent email) {
         log.debug("[MailConsumer] Received onboard email for: {}", email.to());
         boolean success = mailService.sendOnBoard(email.to(), email.subject(), email.content());
         if (!success) {
-            // Throw để trigger Spring AMQP retry → sau 3 lần sẽ NACK → DLQ
-            throw new RuntimeException("Brevo send failed for: " + email.to());
+            throw new RuntimeException("Brevo send failed for onboard: " + email.to());
         }
     }
 
-    // ── DLQ listener ─────────────────────────────────────────────
-
     @RabbitListener(queues = "${spring.rabbitmq.mail.onboard.dlq}")
     public void consumeOnBoardDLQ(Message rawMessage) {
-        log.warn("[MailConsumer][DLQ] Onboard email FAILED after all retries. " +
-                        "messageId={}, body={}",
+        log.warn("[MailConsumer][DLQ] Onboard email FAILED after all retries. messageId={}, body={}",
                 rawMessage.getMessageProperties().getMessageId(),
                 new String(rawMessage.getBody()));
-        // TODO: có thể persist vào bảng failed_email_log hoặc gửi alert cho admin
+    }
+
+    // ── Warning ──────────────────────────────────────────────────
+
+    @RabbitListener(queues = "${spring.rabbitmq.mail.warning.queue}", concurrency = "2-5")
+    public void consumeWarning(MailEvent email) {
+        log.debug("[MailConsumer] Received warning email for: {}", email.to());
+        boolean success = mailService.sendOnBoard(email.to(), email.subject(), email.content());
+        if (!success) {
+            throw new RuntimeException("Brevo send failed for warning: " + email.to());
+        }
+    }
+
+    @RabbitListener(queues = "${spring.rabbitmq.mail.warning.dlq}")
+    public void consumeWarningDLQ(Message rawMessage) {
+        log.warn("[MailConsumer][DLQ] Warning email FAILED after all retries. messageId={}, body={}",
+                rawMessage.getMessageProperties().getMessageId(),
+                new String(rawMessage.getBody()));
     }
 }
-

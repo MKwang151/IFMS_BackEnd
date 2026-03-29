@@ -1,6 +1,6 @@
 package com.mkwang.backend.modules.mail.service;
 
-import com.mkwang.backend.modules.mail.consumers.TestMail;
+import com.mkwang.backend.modules.mail.consumers.MailEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -71,7 +71,7 @@ public class BrevoMailServiceImpl implements BrevoMailService {
     }
 
     @Override
-    public boolean sendTest(TestMail email) {
+    public boolean sendTest(MailEvent email) {
         try {
             Map<String, Object> body = Map.of(
                     "sender", Map.of("name", fromName, "email", fromEmail),
