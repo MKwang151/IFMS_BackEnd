@@ -3,6 +3,8 @@ package com.mkwang.backend.modules.auth.websocket;
 import com.mkwang.backend.common.exception.WebSocketAccountException;
 import com.mkwang.backend.common.exception.WebSocketAuthException;
 import com.mkwang.backend.modules.auth.security.JwtService;
+import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +24,9 @@ import org.springframework.stereotype.Component;
  * <p>
  * Flow: client gửi STOMP CONNECT với header
  * {@code Authorization: Bearer <token>}
- * → interceptor extract JWT → validate → set Authentication vào principal.
+ * → interceptor extract JWT → validate chữ ký + hết hạn + token version
+ * (single-session)
+ * → set Authentication vào principal.
  * Các frame sau (SEND, SUBSCRIBE) kế thừa authentication đã được thiết lập.
  */
 @Slf4j
@@ -63,14 +67,28 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
+                // Kiểm tra trạng thái tài khoản
                 if (!userDetails.isEnabled()) {
                     throw new WebSocketAccountException("Account is disabled. Contact administrator.");
                 }
                 if (!userDetails.isAccountNonLocked()) {
                     throw new WebSocketAccountException("Account is locked. Contact administrator.");
                 }
+
+                // Validate chữ ký + hạn sử dụng token
                 if (!jwtService.isTokenValid(jwt, userDetails)) {
                     throw new WebSocketAuthException("Token is invalid or expired");
+                }
+
+                // ── Single-session check: version trong token vs Redis/DB ──
+                UserDetailsAdapter adapter = (UserDetailsAdapter) userDetails;
+                Long userId = adapter.getUser().getId();
+
+                if (!jwtService.isTokenVersionValid(jwt, userId)) {
+                    log.info(
+                            "WebSocket CONNECT rejected: token version mismatch for user={} — session invalidated by new login",
+                            username);
+                    throw new WebSocketAuthException("Tài khoản đã đăng nhập ở thiết bị khác.");
                 }
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
@@ -83,9 +101,17 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
                 log.debug("WebSocket authenticated: user={}", username);
 
+            } catch (WebSocketAuthException | WebSocketAccountException e) {
+                throw e; // Re-throw domain exceptions as-is
+            } catch (ExpiredJwtException e) {
+                log.debug("WebSocket CONNECT rejected: expired JWT for user={}", e.getClaims().getSubject());
+                throw new WebSocketAuthException("Token has expired. Please refresh your token.", e);
             } catch (JwtException e) {
                 log.warn("WebSocket CONNECT rejected: invalid JWT — {}", e.getMessage());
                 throw new WebSocketAuthException("Invalid JWT token", e);
+            } catch (Exception e) {
+                log.error("WebSocket authentication error: {}", e.getMessage(), e);
+                throw new WebSocketAuthException("Authentication failed.", e);
             }
         }
 

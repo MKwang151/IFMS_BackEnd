@@ -9,8 +9,9 @@ import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 /**
  * SchedulerConfig — cấu hình thread pool cho @Scheduled tasks.
  * <p>
- * Async executor đã được loại bỏ — mail và audit log dùng RabbitMQ consumer
- * (concurrency quản lý bởi Spring AMQP, không cần @Async thread pool riêng).
+ * @Async executor cho audit publish được định nghĩa riêng trong
+ * AuditRabbitMQConfig#auditPublishExecutor() với bean name "auditPublishExecutor".
+ * AsyncConfig bật @EnableAsync toàn app để AuditPublisher hoạt động đúng.
  */
 @Configuration
 @EnableScheduling

@@ -3,6 +3,7 @@ package com.mkwang.backend.config;
 import com.mkwang.backend.modules.auth.security.JwtAuthenticationEntryPoint;
 import com.mkwang.backend.modules.auth.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -32,11 +33,11 @@ public class SecurityConfig {
 
         // Public endpoints — change-password, me, logout yêu cầu authenticated
         private static final String[] WHITE_LIST_URLS = {
-                        "/api/v1/auth/login",
-                        "/api/v1/auth/refresh-token",
-                        "/api/v1/auth/forgot-password",
-                        "/api/v1/auth/reset-password",
-                        "/api/v1/test/public",
+                        "/auth/login",
+                        "/auth/refresh-token",
+                        "/auth/forgot-password",
+                        "/auth/reset-password",
+                        "/test/public",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
@@ -48,38 +49,40 @@ public class SecurityConfig {
         @Bean
         public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
                 http
-                                // Disable CSRF for stateless API
                                 .csrf(AbstractHttpConfigurer::disable)
-
-                                // Configure CORS
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-
-                                // Configure authorization
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(WHITE_LIST_URLS).permitAll()
                                                 .anyRequest().authenticated())
-
-                                // Configure session management - stateless for JWT
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-                                // Configure exception handling
                                 .exceptionHandling(exception -> exception
                                                 .authenticationEntryPoint(jwtAuthenticationEntryPoint))
-
-                                // Set authentication provider
                                 .authenticationProvider(authenticationProvider)
-
-                                // Add JWT filter before UsernamePasswordAuthenticationFilter
                                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
                 return http.build();
         }
 
+        /**
+         * Ngăn Spring Boot auto-register JwtAuthenticationFilter như servlet filter riêng.
+         * JwtAuthenticationFilter là @Component → Spring Boot sẽ tự đăng ký vào servlet chain (order 0),
+         * ngoài việc nó đã được addFilterBefore() vào security chain.
+         * Kết quả: chạy 2 lần/request (double-execution).
+         * setEnabled(false) → chỉ chạy trong security chain, không phải servlet chain.
+         */
+        @Bean
+        public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(
+                        JwtAuthenticationFilter filter) {
+                FilterRegistrationBean<JwtAuthenticationFilter> bean = new FilterRegistrationBean<>(filter);
+                bean.setEnabled(false);
+                return bean;
+        }
+
         @Bean
         public CorsConfigurationSource corsConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
-                configuration.setAllowedOrigins(List.of("*")); // Configure as needed
+                configuration.setAllowedOrigins(List.of("*"));
                 configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
                 configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
                 configuration.setExposedHeaders(List.of("Authorization"));

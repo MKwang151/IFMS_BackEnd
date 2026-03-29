@@ -2,6 +2,7 @@ spring:
   application:
     name: IFMS-Backend
 
+
   # ── Database + HikariCP Connection Pool ────────────────────
   # Tối ưu cho ~1000 concurrent requests
   # Formula: pool-size = (core_count * 2) + disk_spindles ≈ 20-30 cho production
@@ -97,6 +98,11 @@ spring:
         routing-key: ${RABBITMQ_MAIL_ONBOARD_ROUTING_KEY:mailOnboard}
         dlq: ${RABBITMQ_MAIL_ONBOARD_DLQ:mailOnboardDLQ}
         dlq-routing-key: ${RABBITMQ_MAIL_ONBOARD_DLQ_ROUTING_KEY:mailOnboardDead}
+      warning:
+        queue: ${RABBITMQ_MAIL_WARNING_QUEUE:mailWarningQueue}
+        routing-key: ${RABBITMQ_MAIL_WARNING_ROUTING_KEY:mailWarning}
+        dlq: ${RABBITMQ_MAIL_WARNING_DLQ:mailWarningDLQ}
+        dlq-routing-key: ${RABBITMQ_MAIL_WARNING_DLQ_ROUTING_KEY:mailWarningDead}
     audit:
       exchange: ${RABBITMQ_AUDIT_EXCHANGE:auditExchange}
       dlx: ${RABBITMQ_AUDIT_DLX:auditDLX}
@@ -135,6 +141,8 @@ application:
 # ── Server ─────────────────────────────────────────────────
 server:
   port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api/v1
   compression:
     enabled: true
     mime-types: application/json,application/xml,text/html,text/plain

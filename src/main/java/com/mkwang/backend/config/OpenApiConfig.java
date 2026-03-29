@@ -23,9 +23,8 @@ import org.springframework.context.annotation.Configuration;
         ),
         servers = {
                 @Server(url = "http://localhost:8080", description = "Local Development Server")
-        },
-        // Global security: mọi endpoint đều yêu cầu Bearer token (trừ các endpoint được override)
-        security = @SecurityRequirement(name = "bearerAuth")
+        }
+
 )
 @SecurityScheme(
         name = "bearerAuth",
