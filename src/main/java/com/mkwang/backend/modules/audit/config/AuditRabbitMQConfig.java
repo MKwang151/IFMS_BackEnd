@@ -6,6 +6,7 @@ import org.springframework.amqp.core.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
  * AuditRabbitMQConfig — khai báo Exchange, Queue, Binding cho audit module.
@@ -79,5 +80,27 @@ public class AuditRabbitMQConfig {
                 .bind(auditDLQ())
                 .to(auditDLX())
                 .with(dlqRoutingKey);
+    }
+
+    // ── Async Publish Executor ────────────────────────────────────
+
+    /**
+     * Dedicated thread pool cho AuditPublisher.publishAsync().
+     * Tách việc gọi RabbitMQ ra khỏi Hibernate commit thread (= request thread).
+     * - corePoolSize = 2: đủ cho baseline traffic
+     * - maxPoolSize = 5: burst capacity
+     * - queueCapacity = 500: buffer khi burst đột ngột
+     */
+    @Bean(name = "auditPublishExecutor")
+    public ThreadPoolTaskExecutor auditPublishExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(5);
+        executor.setQueueCapacity(500);
+        executor.setThreadNamePrefix("audit-pub-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        executor.initialize();
+        return executor;
     }
 }

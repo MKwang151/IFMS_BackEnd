@@ -19,6 +19,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import com.mkwang.backend.modules.audit.context.AuditContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -43,6 +44,11 @@ public class AuthServiceImpl implements AuthService {
 
         var user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
+
+        // Cập nhật actorId vào AuditContext — vì đây là public endpoint,
+        // JwtFilter skip nên AuditContextFilter không đọc được actorId.
+        // Phải set thủ công sau khi authenticationManager xác thực thành công.
+        AuditContextHolder.setActorId(user.getId());
 
         // Single-session: tăng tokenVersion → invalidate mọi token cũ
         user.setTokenVersion(user.getTokenVersion() + 1);
@@ -98,6 +104,9 @@ public class AuthServiceImpl implements AuthService {
             String userEmail = jwtService.extractUsername(accessToken);
             var user = userRepository.findByEmail(userEmail)
                     .orElseThrow(() -> new UnauthorizedException("User not found"));
+
+            // Cập nhật actorId — logout có JWT nhưng không qua JwtFilter bình thường
+            AuditContextHolder.setActorId(user.getId());
 
             // Stateless logout: tăng tokenVersion → mọi token hiện tại đều bị invalidate
             user.setTokenVersion(user.getTokenVersion() + 1);

@@ -10,6 +10,7 @@ import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
 import com.mkwang.backend.modules.auth.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/auth")
 @RequiredArgsConstructor
 @Tag(name = "Authentication", description = "Authentication management APIs")
 public class AuthController {
@@ -43,6 +44,7 @@ public class AuthController {
     // ── POST /auth/logout ────────────────────────────────────────
 
     @PostMapping("/logout")
+    @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Logout and revoke all refresh tokens")
     public ResponseEntity<ApiResponse<Map<String, String>>> logout(
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
@@ -55,6 +57,7 @@ public class AuthController {
     // ── POST /auth/refresh-token ─────────────────────────────────
 
     @PostMapping("/refresh-token")
+    @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Refresh access token")
     public ResponseEntity<ApiResponse<AuthenticationResponse>> refreshToken(
             @Valid @RequestBody RefreshTokenRequest request) {

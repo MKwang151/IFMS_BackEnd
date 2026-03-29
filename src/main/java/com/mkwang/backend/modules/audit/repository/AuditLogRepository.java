@@ -13,22 +13,5 @@ import java.util.List;
 @Repository
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
-    /** All audit logs created by a specific actor, newest first */
-    List<AuditLog> findByActor_IdOrderByCreatedAtDesc(Long actorId);
 
-    /** All audit logs for a specific entity (e.g. all changes to a department) */
-    List<AuditLog> findByEntityNameAndEntityIdOrderByCreatedAtDesc(String entityName, String entityId);
-
-    /** All audit logs for a specific action type, paginated */
-    Page<AuditLog> findByActionOrderByCreatedAtDesc(AuditAction action, Pageable pageable);
-
-    /** All audit logs within a time range, paginated */
-    Page<AuditLog> findByCreatedAtBetweenOrderByCreatedAtDesc(
-            LocalDateTime from,
-            LocalDateTime to,
-            Pageable pageable
-    );
-
-    /** All audit logs for a given entity type, paginated */
-    Page<AuditLog> findByEntityNameOrderByCreatedAtDesc(String entityName, Pageable pageable);
 }
