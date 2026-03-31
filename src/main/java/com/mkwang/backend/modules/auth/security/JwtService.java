@@ -9,6 +9,7 @@ import io.jsonwebtoken.security.SecurityException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,7 @@ import java.util.stream.Collectors;
 public class JwtService {
 
     private final UserRepository userRepository;
-    private final RedisTemplate<String, String> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     private final SecretKey signingKey;
     private final JwtParser jwtParser;
@@ -46,7 +47,7 @@ public class JwtService {
 
     public JwtService(
             UserRepository userRepository,
-            RedisTemplate<String, String> redisTemplate,
+            StringRedisTemplate redisTemplate,
             @Value("${application.security.jwt.secret-key}") String secretKey,
             @Value("${application.security.jwt.expiration}") long jwtExpiration,
             @Value("${application.security.jwt.refresh-token.expiration}") long refreshExpiration) {

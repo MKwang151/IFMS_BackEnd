@@ -52,24 +52,22 @@ public class RedisConfig {
         @Value("${spring.cache.redis.time-to-live:3600000}")
         private long defaultCacheTtlMs;
 
-        // ── Manual Cache: RedisTemplate<String, String> ─────────────────────────
-        // Used by JwtService.cacheTokenVersion() — plain String → fastest,
-        // human-readable.
-
         /**
-         * RedisTemplate<String, String> for manual key-value operations.
-         * Both keys and values are plain Strings — no serialization overhead.
+         * RedisTemplate<String, Object> for manual object caching (e.g., OTP DTOs, token versions).
+         * Values are serialized as JSON with type metadata.
          */
         @Bean
-        public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory connectionFactory) {
-                RedisTemplate<String, String> template = new RedisTemplate<>();
+        public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+                RedisTemplate<String, Object> template = new RedisTemplate<>();
                 template.setConnectionFactory(connectionFactory);
 
-                StringRedisSerializer serializer = new StringRedisSerializer();
-                template.setKeySerializer(serializer);
-                template.setValueSerializer(serializer);
-                template.setHashKeySerializer(serializer);
-                template.setHashValueSerializer(serializer);
+                StringRedisSerializer keySerializer = new StringRedisSerializer();
+                GenericJackson2JsonRedisSerializer valueSerializer = new GenericJackson2JsonRedisSerializer(buildCacheObjectMapper());
+
+                template.setKeySerializer(keySerializer);
+                template.setValueSerializer(valueSerializer);
+                template.setHashKeySerializer(keySerializer);
+                template.setHashValueSerializer(valueSerializer);
 
                 template.afterPropertiesSet();
                 return template;

@@ -69,7 +69,8 @@ spring:
           min-idle: 2
           max-idle: 8
           max-active: 16                     # Max concurrent Redis connections
-          max-wait: 3000ms                   # Wait time if pool exhausted
+          max-wait: 3000ms
+
 
   # ── Spring Cache (Redis) ────────────────────────────────────
   cache:
@@ -77,7 +78,8 @@ spring:
     redis:
       time-to-live: ${CACHE_TTL_MS:3600000}  # Default TTL: 1 giờ (ms)
       use-key-prefix: true                    # Tạo prefix "cacheName::" cho dễ quản lý
-      cache-null-values: false                # Không cache null → tránh stale null
+      cache-null-values: false
+
 
   # ── Servlet (File Upload Limit) ────────────────────────────
   servlet:
@@ -98,6 +100,11 @@ spring:
         routing-key: ${RABBITMQ_MAIL_ONBOARD_ROUTING_KEY:mailOnboard}
         dlq: ${RABBITMQ_MAIL_ONBOARD_DLQ:mailOnboardDLQ}
         dlq-routing-key: ${RABBITMQ_MAIL_ONBOARD_DLQ_ROUTING_KEY:mailOnboardDead}
+      forget-password:
+        queue: ${RABBITMQ_MAIL_FORGET_PASSWORD_QUEUE:mailForgetPasswordQueue}
+        routing-key: ${RABBITMQ_MAIL_FORGET_PASSWORD_ROUTING_KEY:mailForgetPassword}
+        dlq: ${RABBITMQ_MAIL_FORGET_PASSWORD_DLQ:mailForgetPasswordDLQ}
+        dlq-routing-key: ${RABBITMQ_MAIL_FORGET_PASSWORD_DLQ_ROUTING_KEY:mailForgetPasswordDead}
       warning:
         queue: ${RABBITMQ_MAIL_WARNING_QUEUE:mailWarningQueue}
         routing-key: ${RABBITMQ_MAIL_WARNING_ROUTING_KEY:mailWarning}
@@ -110,6 +117,7 @@ spring:
       routing-key: ${RABBITMQ_AUDIT_ROUTING_KEY:audit}
       dlq: ${RABBITMQ_AUDIT_DLQ:auditDLQ}
       dlq-routing-key: ${RABBITMQ_AUDIT_DLQ_ROUTING_KEY:auditDead}
+
 
 
 # ── Cloudinary (SDK Connection Only) ───────────────────────
@@ -130,13 +138,13 @@ application:
       length: ${PIN_LENGTH:5}
       max-retry: ${PIN_MAX_RETRY:5}
       lock-minutes: ${PIN_LOCK_MINUTES:30}
+
+  # ── Brevo Mail ───────────────────────────────────
   mail:
     brevo-api-key: ${BREVO_API_KEY:your_brevo_api_key}
     from-email: ${MAIL_FROM_EMAIL:noreply@ifms.vn}
     from-name: ${MAIL_FROM_NAME:IFMS System}
-  file-storage:
-    root-folder: ${CLOUDINARY_ROOT_FOLDER:ifms}
-    access-mode: ${CLOUDINARY_ACCESS_MODE:authenticated}
+
 
 # ── Server ─────────────────────────────────────────────────
 server:
@@ -158,3 +166,8 @@ logging:
     org.flywaydb: INFO
 
 
+# ── custom ttl ─────────────────────────────────────────────────
+app:
+  otp:
+    ttl: ${OTP_TTL_MS:300000}            # 5 phút (ms)
+    length: ${OTP_LENGTH:6}

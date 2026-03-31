@@ -56,6 +56,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (path.equals("/auth/login")
                 || path.equals("/auth/refresh-token")
                 || path.equals("/auth/forgot-password")
+                || path.equals("/auth/verify-password-reset")
                 || path.equals("/auth/reset-password")) {
             filterChain.doFilter(request, response);
             return;
