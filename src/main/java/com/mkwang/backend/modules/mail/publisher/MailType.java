@@ -10,5 +10,7 @@ public enum MailType {
     ONBOARD,
 
     /** Email cảnh báo: PIN bị khóa, tài khoản bị lock, ngưỡng chi tiêu vượt quá... */
-    WARNING
+    WARNING,
+
+    FORGET_PASSWORD
 }

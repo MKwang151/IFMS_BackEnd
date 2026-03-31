@@ -12,5 +12,5 @@ import com.mkwang.backend.modules.mail.consumers.MailEvent;
 public interface BrevoMailService {
 
     boolean sendOnBoard(String to, String subject, String content);
-    boolean sendTest(MailEvent email);
+    boolean sendForgetPassword(String to, String subject, String content);
 }

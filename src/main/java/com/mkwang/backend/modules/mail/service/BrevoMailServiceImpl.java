@@ -1,12 +1,13 @@
 package com.mkwang.backend.modules.mail.service;
 
-import com.mkwang.backend.modules.mail.consumers.MailEvent;
+import org.thymeleaf.context.Context;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import java.util.List;
 import java.util.Map;
@@ -30,13 +31,16 @@ public class BrevoMailServiceImpl implements BrevoMailService {
     private final RestClient restClient;
     private final String fromEmail;
     private final String fromName;
+    private final SpringTemplateEngine templateEngine;
 
     public BrevoMailServiceImpl(
             @Value("${application.mail.brevo-api-key}") String apiKey,
             @Value("${application.mail.from-email}") String fromEmail,
-            @Value("${application.mail.from-name}") String fromName) {
+            @Value("${application.mail.from-name}") String fromName,
+            SpringTemplateEngine templateEngine) {
         this.fromEmail = fromEmail;
         this.fromName = fromName;
+        this.templateEngine = templateEngine;
         this.restClient = RestClient.builder()
                 .baseUrl(BREVO_API_URL)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
@@ -71,26 +75,32 @@ public class BrevoMailServiceImpl implements BrevoMailService {
     }
 
     @Override
-    public boolean sendTest(MailEvent email) {
+    public boolean sendForgetPassword(String to, String subject, String content) {
         try {
+            Context context = new Context();
+            context.setVariable("otpCode", content);
+            String htmlContent = templateEngine.process("email/otp-email", context);
+
             Map<String, Object> body = Map.of(
                     "sender", Map.of("name", fromName, "email", fromEmail),
-                    "to", List.of(Map.of("email", email.to())),
-                    "subject", email.subject(),
-                    "htmlContent", email.content());
+                    "to", List.of(Map.of("email", to)),
+                    "subject", subject,
+                    "htmlContent", htmlContent);
 
             var response = restClient.post()
                     .body(body)
                     .retrieve()
                     .toEntity(String.class);
 
-            log.info("[Brevo] HTTP={} | to={} | subject={}", response.getStatusCode(), email.to(), email.subject());
+            log.info("[Brevo] HTTP={} | to={} | subject={}", response.getStatusCode(), to, subject);
             log.debug("[Brevo] Response body: {}", response.getBody());
             return true;
 
         } catch (Exception e) {
-            log.error("[Brevo] Failed to send email: to={}, subject={}, error={}", email.to(), email.subject(), e.getMessage(), e);
+            log.error("[Brevo] Failed to send email: to={}, subject={}, error={}", to, subject, e.getMessage(), e);
             return false;
         }
     }
+
+
 }

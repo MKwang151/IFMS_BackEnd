@@ -219,6 +219,13 @@ public class DataInitializer implements CommandLineRunner {
                 "VCB", "0011004000001", "PHAM THI THANH HA"
         );
 
+        User supportAdmin = createUserIfNotExists(
+                "ifms.support.noreply@gmail.com", "MK999", "System Support",
+                adminRole, it,
+                "System Admin", "0999999999", "Hà Nội",
+                "VCB", "0999999999999", "SYSTEM SUPPORT"
+        );
+
         // ---- ACCOUNTANT ----
         User accountant = createUserIfNotExists(
                 "accountant@ifms.vn", "MK001", "Lê Văn Cường",
@@ -467,4 +474,3 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 }
-

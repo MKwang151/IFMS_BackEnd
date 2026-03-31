@@ -53,6 +53,19 @@ public class MailRabbitMQConfig {
     @Value("${spring.rabbitmq.mail.warning.dlq-routing-key}")
     String warningDLQRoutingKey;
 
+// ── Forget Password ────────────────────────────────────────────
+    @Value("${spring.rabbitmq.mail.forget-password.queue}")
+    String forgetPasswordQueue;
+
+    @Value("${spring.rabbitmq.mail.forget-password.routing-key}")
+    String forgetPasswordRoutingKey;
+
+    @Value("${spring.rabbitmq.mail.forget-password.dlq}")
+    String forgetPasswordDLQ;
+
+    @Value("${spring.rabbitmq.mail.forget-password.dlq-routing-key}")
+    String forgetPasswordDLQRoutingKey;
+
     // ── Shared beans ─────────────────────────────────────────────
 
     @Bean
@@ -114,4 +127,29 @@ public class MailRabbitMQConfig {
     public Binding warningDLQBinding() {
         return BindingBuilder.bind(warningDLQ()).to(mailDLX()).with(warningDLQRoutingKey);
     }
+
+//    ── Forget Password beans ────────────────────────────────────────────
+    @Bean
+    public Queue forgetPasswordQueue() {
+        return QueueBuilder.durable(forgetPasswordQueue)
+                .withArgument("x-dead-letter-exchange", dlx)
+                .withArgument("x-dead-letter-routing-key", forgetPasswordDLQRoutingKey)
+                .build();
+    }
+
+    @Bean
+    public Binding forgetPasswordBinding() {
+        return BindingBuilder.bind(forgetPasswordQueue()).to(mailExchange()).with(forgetPasswordRoutingKey);
+    }
+
+    @Bean
+    public Queue forgetPasswordDLQ () {
+        return QueueBuilder.durable(forgetPasswordDLQ).build();
+    }
+
+    @Bean
+    public Binding forgetPasswordDLQBinding() {
+        return BindingBuilder.bind(forgetPasswordDLQ()).to(mailDLX()).with(forgetPasswordDLQRoutingKey);
+    }
+
 }

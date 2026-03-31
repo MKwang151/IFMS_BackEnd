@@ -63,4 +63,23 @@ public class MailConsumer {
                 rawMessage.getMessageProperties().getMessageId(),
                 new String(rawMessage.getBody()));
     }
+
+    // ── Forget Password ──────────────────────────────────────────────────
+
+    @RabbitListener(queues = "${spring.rabbitmq.mail.forget-password.queue}", concurrency = "2-5")
+    public void consumeForgetPassword(MailEvent email) {
+        log.debug("[MailConsumer] Received forget password email for: {}", email.to());
+        boolean success = mailService.sendForgetPassword(email.to(), email.subject(), email.content());
+        if (!success) {
+            throw new RuntimeException("Brevo send failed for forget password: " + email.to());
+        }
+    }
+
+    @RabbitListener(queues = "${spring.rabbitmq.mail.forget-password.dlq}")
+    public void consumeForgetPasswordDLQ(Message rawMessage) {
+        log.warn("[MailConsumer][DLQ] Forget Password email FAILED after all retries. messageId={}, body={}",
+                rawMessage.getMessageProperties().getMessageId(),
+                new String(rawMessage.getBody()));
+    }
+
 }

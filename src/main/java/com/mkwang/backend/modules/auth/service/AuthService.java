@@ -1,9 +1,6 @@
 package com.mkwang.backend.modules.auth.service;
 
-import com.mkwang.backend.modules.auth.dto.request.ChangePasswordRequest;
-import com.mkwang.backend.modules.auth.dto.request.ForgotPasswordRequest;
-import com.mkwang.backend.modules.auth.dto.request.LoginRequest;
-import com.mkwang.backend.modules.auth.dto.request.ResetPasswordRequest;
+import com.mkwang.backend.modules.auth.dto.request.*;
 import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
 
@@ -16,6 +13,8 @@ public interface AuthService {
     void logout(String accessToken);
 
     void forgotPassword(ForgotPasswordRequest request);
+
+    void verifyPasswordResetOtp(VerifyOtpPasswordResetRequest request);
 
     void resetPassword(ResetPasswordRequest request);
 

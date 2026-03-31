@@ -3,24 +3,28 @@ package com.mkwang.backend.modules.auth.service;
 import com.mkwang.backend.common.exception.BadRequestException;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.exception.UnauthorizedException;
-import com.mkwang.backend.modules.auth.dto.request.ChangePasswordRequest;
-import com.mkwang.backend.modules.auth.dto.request.ForgotPasswordRequest;
-import com.mkwang.backend.modules.auth.dto.request.LoginRequest;
-import com.mkwang.backend.modules.auth.dto.request.ResetPasswordRequest;
+import com.mkwang.backend.modules.auth.dto.request.*;
 import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
 import com.mkwang.backend.modules.auth.security.JwtService;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
+import com.mkwang.backend.modules.mail.publisher.MailPublisher;
+import com.mkwang.backend.modules.mail.publisher.MailType;
 import com.mkwang.backend.modules.user.entity.User;
 import com.mkwang.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import com.mkwang.backend.modules.audit.context.AuditContextHolder;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.security.SecureRandom;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -31,6 +35,18 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final SecureRandom secureRandom;
+    private final MailPublisher mailPublisher;
+    private final String PASSWORD_RESET_PREFIX = "password_reset_email: ";
+
+
+
+    @Value("${app.otp.ttl}")
+    private Long otpExpiration;
+
+    @Value("${app.otp.length}")
+    private int OTP_LENGTH;
 
     // ── POST /auth/login ─────────────────────────────────────────
 
@@ -124,14 +140,66 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void forgotPassword(ForgotPasswordRequest request) {
-        var userOpt = userRepository.findByEmail(request.getEmail());
-        if (userOpt.isEmpty()) {
-            log.debug("Forgot password requested for non-existing email: {}", request.getEmail());
-            return; // Silent — không leak thông tin email tồn tại
+        if(!userRepository.existsByEmail(request.getEmail())) {
+            throw new ResourceNotFoundException("Email not found");
         }
-        // TODO: Generate reset token, lưu DB, gửi email qua BrevoMailService
-        log.info("Password reset requested for: {}", request.getEmail());
+
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new BadRequestException("Passwords do not match");
+        }
+
+        String key = PASSWORD_RESET_PREFIX + request.getEmail();
+        String otp = generateDigitString(OTP_LENGTH);
+
+        ForgotPasswordOtpData data = ForgotPasswordOtpData.builder()
+                .email(request.getEmail())
+                .newPassword(request.getNewPassword())
+                .otp(otp)
+                .build();
+
+        redisTemplate.opsForValue().set(key, data,otpExpiration
+        , TimeUnit.MILLISECONDS);
+        mailPublisher.publish(MailType.FORGET_PASSWORD, request.getEmail(), "Password Reset OTP",
+                String.format("Your OTP for password reset is: %s. It expires in %d minutes.",
+                        otp, TimeUnit.MILLISECONDS.toMinutes(otpExpiration)));
     }
+
+// ── POST /auth/verify-password-reset-otp ─────────────────────
+
+    @Override
+    @Transactional // Nên có Transactional vì hàm này có gọi userRepository.save()
+    public void verifyPasswordResetOtp(VerifyOtpPasswordResetRequest request) {
+        String key = PASSWORD_RESET_PREFIX + request.email();
+        ForgotPasswordOtpData data = (ForgotPasswordOtpData) redisTemplate.opsForValue().get(key);
+
+        // 1. Kiểm tra Null (OTP hết hạn hoặc email không tồn tại trong cache)
+        if (data == null) {
+            throw new BadRequestException("OTP has expired or is invalid");
+        }
+
+        // 2. Kiểm tra OTP khớp không
+        if(!request.otp().equals(data.getOtp())) {
+            throw new BadRequestException("Invalid OTP");
+        }
+
+        // 3. Tiến hành đổi mật khẩu
+        var user = userRepository.findByEmail(data.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        user.setPassword(passwordEncoder.encode(data.getNewPassword()));
+
+        // Đổi mật khẩu thì nên tăng tokenVersion để kick user ra khỏi các thiết bị khác (Single-session)
+        user.setTokenVersion(user.getTokenVersion() + 1);
+
+        userRepository.save(user);
+
+        // Cập nhật lại tokenVersion lên Redis
+        jwtService.cacheTokenVersion(user.getId(), user.getTokenVersion());
+
+        // 4. BẮT BUỘC: Xóa OTP khỏi Redis để tránh bị dùng lại (Replay Attack)
+        redisTemplate.delete(key);
+    }
+
 
     // ── POST /auth/reset-password ────────────────────────────────
 
@@ -201,5 +269,13 @@ public class AuthServiceImpl implements AuthService {
                 .isFirstLogin(user.getIsFirstLogin())
                 .status(user.getStatus().name())
                 .build();
+    }
+
+    private String generateDigitString(int n) {
+        StringBuilder otp = new StringBuilder(n);
+        for (int i = 0; i < n; i++) {
+            otp.append(secureRandom.nextInt(10));
+        }
+        return otp.toString();
     }
 }

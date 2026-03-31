@@ -1,11 +1,7 @@
 package com.mkwang.backend.modules.auth.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
-import com.mkwang.backend.modules.auth.dto.request.ChangePasswordRequest;
-import com.mkwang.backend.modules.auth.dto.request.ForgotPasswordRequest;
-import com.mkwang.backend.modules.auth.dto.request.LoginRequest;
-import com.mkwang.backend.modules.auth.dto.request.RefreshTokenRequest;
-import com.mkwang.backend.modules.auth.dto.request.ResetPasswordRequest;
+import com.mkwang.backend.modules.auth.dto.request.*;
 import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
 import com.mkwang.backend.modules.auth.service.AuthService;
@@ -69,11 +65,23 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     @Operation(summary = "Send password reset email")
-    public ResponseEntity<ApiResponse<Map<String, String>>> forgotPassword(
+    public ResponseEntity<ApiResponse<String>> forgotPassword(
             @Valid @RequestBody ForgotPasswordRequest request) {
         authService.forgotPassword(request);
-        return ResponseEntity.ok(ApiResponse.success("Success",
-                Map.of("message", "Reset email sent if account exists")));
+        return ResponseEntity.ok(
+                ApiResponse.<String>builder()
+                        .success(true)
+                         .message("If the email exists, a password reset OTP has been sent")
+                        .build()
+        );
+    }
+
+    @PostMapping("/verify-password-reset")
+    @Operation(summary = "Verify password reset OTP")
+    public ResponseEntity<ApiResponse<String>> verifyPasswordRestOtp(
+            @RequestBody VerifyOtpPasswordResetRequest request) {
+        authService.verifyPasswordResetOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("OTP verified successfully"));
     }
 
     // ── POST /auth/reset-password ────────────────────────────────
