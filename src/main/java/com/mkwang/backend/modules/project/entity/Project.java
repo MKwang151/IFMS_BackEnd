@@ -87,12 +87,6 @@ public class Project extends BaseEntity {
   @Builder.Default
   private List<ProjectMember> members = new ArrayList<>();
 
-  /**
-   * Optimistic locking for concurrent budget updates.
-   */
-  @Version
-  private Long version;
-
   // ======================== Business Logic ========================
 
   /**

@@ -1,20 +1,30 @@
 package com.mkwang.backend.modules.wallet.entity;
 
 import com.mkwang.backend.common.base.BaseEntity;
-import com.mkwang.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
 
 /**
- * Wallet entity - Core wallet for each user.
- * Concurrency Strategy:
- *   - Primary: Pessimistic Lock via findByIdForUpdate() in Repository
- *   - Safety Net: @Version (Optimistic Locking) as fallback for edge cases
+ * Wallet entity — Unified wallet for all financial actors (User, Department, Project, SystemFund).
+ *
+ * Balance model (industry-standard 2-field approach):
+ *   balance        = total gross balance
+ *   lockedBalance  = portion reserved for pending/approved-but-not-yet-disbursed operations
+ *   availableBalance (derived) = balance - lockedBalance  ← what can actually be spent
+ *
+ * Concurrency strategy:
+ *   Primary   : Pessimistic Write Lock via findByOwnerTypeAndOwnerIdForUpdate() in Repository
+ *   Safety net: @Version (Optimistic Locking) as fallback for edge cases
  */
 @Entity
-@Table(name = "wallets")
+@Table(
+    name = "wallets",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_wallet_owner", columnNames = {"owner_type", "owner_id"})
+    }
+)
 @Getter
 @Setter
 @Builder
@@ -26,71 +36,96 @@ public class Wallet extends BaseEntity {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @OneToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "user_id", unique = true, nullable = false)
-  private User user;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "owner_type", nullable = false, length = 20)
+  private WalletOwnerType ownerType;
 
+  @Column(name = "owner_id", nullable = false)
+  private Long ownerId;
+
+  /**
+   * Gross balance — total money in the wallet including locked amounts.
+   */
   @Column(name = "balance", precision = 19, scale = 2, nullable = false, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
   private BigDecimal balance = BigDecimal.ZERO;
 
-  @Column(name = "pending_balance", precision = 19, scale = 2, nullable = false, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
+  /**
+   * Portion of balance that is reserved and cannot be spent.
+   * Increases when a request is approved (funds reserved).
+   * Decreases when the reservation is settled or released.
+   */
+  @Column(name = "locked_balance", precision = 19, scale = 2, nullable = false, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
   @Builder.Default
-  private BigDecimal pendingBalance = BigDecimal.ZERO;
-
-  @Column(name = "debt_balance", precision = 19, scale = 2, nullable = false, columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-  @Builder.Default
-  private BigDecimal debtBalance = BigDecimal.ZERO;
+  private BigDecimal lockedBalance = BigDecimal.ZERO;
 
   @Version
   @Column(name = "version")
   private Long version;
 
-  /**
-   * Get available balance (balance - pendingBalance)
-   */
-  public BigDecimal getAvailableBalance() {
-    return balance.subtract(pendingBalance);
-  }
+  // ── Read helpers ────────────────────────────────────────────────
 
   /**
-   * Check if wallet has sufficient balance for withdrawal
+   * Available balance = balance - lockedBalance.
+   * This is the only amount that can be spent or transferred out.
    */
+  public BigDecimal getAvailableBalance() {
+    return balance.subtract(lockedBalance);
+  }
+
   public boolean hasSufficientBalance(BigDecimal amount) {
     return getAvailableBalance().compareTo(amount) >= 0;
   }
 
+  // ── Mutation methods ────────────────────────────────────────────
+
   /**
-   * Credit money to wallet
+   * Credit: money enters this wallet (balance increases).
    */
   public void credit(BigDecimal amount) {
     this.balance = this.balance.add(amount);
   }
 
   /**
-   * Debit money from wallet
+   * Debit: immediately remove money from available balance.
+   * Use for direct payouts where no prior reservation was made.
    */
   public void debit(BigDecimal amount) {
     if (!hasSufficientBalance(amount)) {
-      throw new IllegalStateException("Insufficient balance");
+      throw new IllegalStateException("Insufficient available balance");
     }
     this.balance = this.balance.subtract(amount);
   }
 
   /**
-   * Add to debt balance
+   * Reserve: lock a portion of available balance for a pending operation
+   * (e.g. request approved, awaiting Accountant disbursement).
+   * balance stays the same; lockedBalance increases.
    */
-  public void addDebt(BigDecimal amount) {
-    this.debtBalance = this.debtBalance.add(amount);
+  public void lock(BigDecimal amount) {
+    if (!hasSufficientBalance(amount)) {
+      throw new IllegalStateException("Insufficient available balance to lock");
+    }
+    this.lockedBalance = this.lockedBalance.add(amount);
   }
 
   /**
-   * Reduce debt balance
+   * Release: free a previously locked amount without spending it
+   * (e.g. request cancelled or rejected after approval).
    */
-  public void reduceDebt(BigDecimal amount) {
-    this.debtBalance = this.debtBalance.subtract(amount);
-    if (this.debtBalance.compareTo(BigDecimal.ZERO) < 0) {
-      this.debtBalance = BigDecimal.ZERO;
+  public void unlock(BigDecimal amount) {
+    this.lockedBalance = this.lockedBalance.subtract(amount);
+    if (this.lockedBalance.compareTo(BigDecimal.ZERO) < 0) {
+      this.lockedBalance = BigDecimal.ZERO;
     }
+  }
+
+  /**
+   * Settle: finalise a locked reservation — deduct from balance and release the lock.
+   * Use when a previously locked amount is actually disbursed.
+   */
+  public void settle(BigDecimal amount) {
+    unlock(amount);
+    this.balance = this.balance.subtract(amount);
   }
 }

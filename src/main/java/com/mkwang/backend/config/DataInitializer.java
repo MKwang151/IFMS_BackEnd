@@ -12,6 +12,7 @@ import com.mkwang.backend.modules.user.entity.*;
 import com.mkwang.backend.modules.user.repository.RoleRepository;
 import com.mkwang.backend.modules.user.repository.UserRepository;
 import com.mkwang.backend.modules.wallet.entity.Wallet;
+import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
 import com.mkwang.backend.modules.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -151,8 +152,8 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.DEPT_VIEW_DASHBOARD
         ));
 
-        // ACCOUNTANT – Kế toán
-        createRoleIfNotExists("ACCOUNTANT", "Kế toán – quản lý quỹ, chi lương, giải ngân", Set.of(
+        // ACCOUNTANT – Kế toán (daily ops: payout, payroll, fund monitoring)
+        createRoleIfNotExists("ACCOUNTANT", "Kế toán – giải ngân, chi lương, theo dõi quỹ", Set.of(
                 Permission.USER_PROFILE_VIEW,
                 Permission.USER_PROFILE_UPDATE,
                 Permission.USER_PIN_UPDATE,
@@ -177,9 +178,58 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.SYSTEM_FUND_TOPUP
         ));
 
-        // ADMIN – Toàn quyền
-        createRoleIfNotExists("ADMIN", "Quản trị viên – toàn quyền hệ thống",
-                EnumSet.allOf(Permission.class));
+        // CFO – Giám đốc Tài chính (financial governance: approve Flow 3, global dashboard)
+        createRoleIfNotExists("CFO", "Giám đốc Tài chính – duyệt cấp quota phòng ban, giám sát dòng tiền toàn công ty", Set.of(
+                Permission.USER_PROFILE_VIEW,
+                Permission.USER_PROFILE_UPDATE,
+                Permission.USER_PIN_UPDATE,
+                Permission.NOTIFICATION_VIEW,
+                Permission.WALLET_VIEW_SELF,
+                Permission.WALLET_DEPOSIT,
+                Permission.WALLET_WITHDRAW,
+                Permission.WALLET_TRANSACTION_VIEW,
+                Permission.PROJECT_VIEW_ACTIVE,
+                Permission.REQUEST_CREATE,
+                Permission.REQUEST_VIEW_SELF,
+                Permission.PAYROLL_VIEW_SELF,
+                Permission.PAYROLL_DOWNLOAD,
+                // CFO-specific: financial governance
+                Permission.PROJECT_VIEW_ALL,
+                Permission.REQUEST_VIEW_ALL,
+                Permission.REQUEST_APPROVE_DEPT_TOPUP,
+                Permission.REQUEST_REJECT,
+                Permission.TRANSACTION_APPROVE_WITHDRAW,
+                Permission.SYSTEM_FUND_VIEW,
+                Permission.SYSTEM_FUND_TOPUP,
+                Permission.DEPT_BUDGET_ALLOCATE,
+                Permission.DASHBOARD_VIEW_GLOBAL
+        ));
+
+        // ADMIN – Quản trị hệ thống (IAM, org structure, system config — NO financial approvals)
+        createRoleIfNotExists("ADMIN", "Quản trị viên – cấu hình hệ thống, quản lý tài khoản & tổ chức", Set.of(
+                Permission.USER_PROFILE_VIEW,
+                Permission.USER_PROFILE_UPDATE,
+                Permission.USER_PIN_UPDATE,
+                Permission.NOTIFICATION_VIEW,
+                Permission.WALLET_VIEW_SELF,
+                Permission.WALLET_DEPOSIT,
+                Permission.WALLET_WITHDRAW,
+                Permission.WALLET_TRANSACTION_VIEW,
+                Permission.PROJECT_VIEW_ACTIVE,
+                Permission.REQUEST_CREATE,
+                Permission.REQUEST_VIEW_SELF,
+                Permission.PAYROLL_VIEW_SELF,
+                Permission.PAYROLL_DOWNLOAD,
+                // Admin-specific: IAM & system config
+                Permission.USER_VIEW_LIST,
+                Permission.USER_CREATE,
+                Permission.USER_UPDATE,
+                Permission.USER_LOCK,
+                Permission.ROLE_MANAGE,
+                Permission.DEPT_MANAGE,
+                Permission.SYSTEM_CONFIG_MANAGE,
+                Permission.AUDIT_LOG_VIEW
+        ));
     }
 
     // =========================================================
@@ -201,6 +251,7 @@ public class DataInitializer implements CommandLineRunner {
         log.info("── [3/5] Seeding Users, Profiles & Wallets ...");
 
         Role adminRole      = roleRepository.findByName("ADMIN").orElseThrow();
+        Role cfoRole        = roleRepository.findByName("CFO").orElseThrow();
         Role managerRole    = roleRepository.findByName("MANAGER").orElseThrow();
         Role teamLeaderRole = roleRepository.findByName("TEAM_LEADER").orElseThrow();
         Role accountantRole = roleRepository.findByName("ACCOUNTANT").orElseThrow();
@@ -211,11 +262,11 @@ public class DataInitializer implements CommandLineRunner {
         Department fin   = departmentRepository.findByCode("FIN").orElseThrow();
         Department sales = departmentRepository.findByCode("SALES").orElseThrow();
 
-        // ---- ADMIN ----
+        // ---- ADMIN (system config only) ----
         User admin = createUserIfNotExists(
                 "admin@ifms.vn", "MK000", "Phạm Thị Thanh Hà",
                 adminRole, bgd,
-                "CEO", "0901000001", "Hà Nội",
+                "System Administrator", "0901000001", "Hà Nội",
                 "VCB", "0011004000001", "PHAM THI THANH HA"
         );
 
@@ -224,6 +275,14 @@ public class DataInitializer implements CommandLineRunner {
                 adminRole, it,
                 "System Admin", "0999999999", "Hà Nội",
                 "VCB", "0999999999999", "SYSTEM SUPPORT"
+        );
+
+        // ---- CFO (financial governance) ----
+        User cfo = createUserIfNotExists(
+                "cfo@ifms.vn", "MK010", "Nguyễn Văn Minh",
+                cfoRole, bgd,
+                "Chief Financial Officer", "0901000010", "Hà Nội",
+                "VCB", "0011004000010", "NGUYEN VAN MINH"
         );
 
         // ---- ACCOUNTANT ----
@@ -456,12 +515,12 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void createWalletIfNotExists(User user) {
-        if (!walletRepository.existsByUserId(user.getId())) {
+        if (!walletRepository.existsByOwnerTypeAndOwnerId(WalletOwnerType.USER, user.getId())) {
             walletRepository.save(Wallet.builder()
-                    .user(user)
+                    .ownerType(WalletOwnerType.USER)
+                    .ownerId(user.getId())
                     .balance(BigDecimal.ZERO)
-                    .pendingBalance(BigDecimal.ZERO)
-                    .debtBalance(BigDecimal.ZERO)
+                    .lockedBalance(BigDecimal.ZERO)
                     .build());
         }
     }

@@ -1,13 +1,14 @@
 package com.mkwang.backend.modules.wallet.entity;
 
 /**
- * Enum representing the source entity type that triggered a transaction.
+ * Identifies the business entity that triggered a Transaction.
  * Used for polymorphic reference: referenceType + referenceId.
  */
 public enum ReferenceType {
-    REQUEST,        // Giao dịch sinh ra từ quá trình duyệt đơn (Tạm ứng, Thanh toán, Hoàn ứng)
-    PAYSLIP,        // Giao dịch sinh ra từ kỳ lương (Nhận lương Net, Cấn trừ nợ tự động)
-    PROJECT,        // Giao dịch cấp vốn cho Dự án (Manager duyệt PROJECT_TOPUP)
-    DEPARTMENT,     // Giao dịch cấp vốn cho Phòng ban (Admin duyệt QUOTA_TOPUP)
-    SYSTEM          // Điều chỉnh hệ thống (Nạp tiền Quỹ Tổng, System Adjustment)
+  REQUEST,          // Transaction from request approval flow (ADVANCE, EXPENSE, REIMBURSE payout)
+  PAYSLIP,          // Transaction from payroll (net salary credit, advance deduction)
+  PROJECT,          // Fund allocation to a project (Manager approves PROJECT_TOPUP)
+  DEPARTMENT,       // Quota allocation to a department (CFO approves DEPARTMENT_TOPUP)
+  ADVANCE_BALANCE,  // Cash return or payroll deduction settling an outstanding advance
+  SYSTEM            // System fund top-up or manual adjustment
 }

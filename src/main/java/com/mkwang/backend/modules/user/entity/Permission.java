@@ -4,121 +4,121 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Danh sách toàn bộ Quyền hạn (Permissions) trong hệ thống.
- * Sử dụng cho Dynamic RBAC (Role-Based Access Control).
+ * System permissions used for Dynamic RBAC.
  *
- * Kiến trúc: Ủy quyền Tuyệt đối (Absolute Delegation) — KHÔNG có leo thang.
- * Ai quản lý quỹ nào → toàn quyền duyệt đơn rút tiền từ quỹ đó.
+ * Role → Permission mapping overview:
+ *   EMPLOYEE    : personal profile, wallet, project view, request create/view
+ *   TEAM_LEADER : + approve Flow 1, manage project budget/phase/members
+ *   MANAGER     : + create/manage projects, approve Flow 2, dept dashboard
+ *   ACCOUNTANT  : + payout, payroll, system fund
+ *   CFO         : financial governance — approve Flow 3, fund top-up, global dashboard
+ *   ADMIN       : system configuration & IAM only — no financial approvals
  */
 @Getter
 @RequiredArgsConstructor
 public enum Permission {
 
   // ================================================================
-  // 1. NHÓM IAM & BẢO MẬT (Identity & Security)
+  // 1. PERSONAL (all authenticated users)
   // ================================================================
-
-  // --- Cá nhân (Dành cho tất cả User) ---
   USER_PROFILE_VIEW("Xem hồ sơ cá nhân"),
   USER_PROFILE_UPDATE("Cập nhật hồ sơ (Avatar, SĐT, Địa chỉ)"),
-  USER_PIN_UPDATE("Thiết lập hoặc Đổi mã PIN giao dịch"),
-  NOTIFICATION_VIEW("Xem thông báo biến động số dư/lương"),
+  USER_PIN_UPDATE("Thiết lập hoặc đổi mã PIN giao dịch"),
+  NOTIFICATION_VIEW("Xem thông báo biến động số dư / lương"),
 
-  // --- Quản trị (Dành cho Admin) ---
+  // ================================================================
+  // 2. IAM & SECURITY (Admin only)
+  // ================================================================
   USER_VIEW_LIST("Xem danh sách nhân viên toàn hệ thống"),
   USER_CREATE("Cấp tài khoản mới (Onboarding)"),
-  USER_UPDATE("Chỉnh sửa thông tin & Điều chuyển nhân sự"),
-  USER_LOCK("Khóa/Mở khóa tài khoản"),
-
-  // --- Phân quyền Động ---
-  ROLE_MANAGE("Quản lý Vai trò & Phân quyền (Tạo Role, Gán quyền)"),
+  USER_UPDATE("Chỉnh sửa thông tin & điều chuyển nhân sự"),
+  USER_LOCK("Khóa / Mở khóa tài khoản"),
+  ROLE_MANAGE("Quản lý vai trò & phân quyền động"),
 
   // ================================================================
-  // 2. NHÓM VÍ ĐIỆN TỬ (Core Wallet)
+  // 3. WALLET (personal — all roles)
   // ================================================================
-
-  // --- Cá nhân ---
-  WALLET_VIEW_SELF("Xem Dashboard ví cá nhân (Số dư, Tiền treo, Dư nợ)"),
-  WALLET_DEPOSIT("Nạp tiền vào ví (Nhập tiền + PIN/QR)"),
-  WALLET_WITHDRAW("Rút tiền về ngân hàng (Nhập TK + PIN)"),
+  WALLET_VIEW_SELF("Xem dashboard ví cá nhân (số dư, tiền khóa)"),
+  WALLET_DEPOSIT("Nạp tiền vào ví qua payment gateway"),
+  WALLET_WITHDRAW("Rút tiền từ ví về ngân hàng"),
   WALLET_TRANSACTION_VIEW("Xem lịch sử giao dịch cá nhân"),
 
-  // --- Rủi ro (Accountant/Admin) ---
-  TRANSACTION_APPROVE_WITHDRAW("Duyệt các lệnh rút tiền lớn hoặc bị treo"),
+  // ================================================================
+  // 4. WALLET RISK CONTROL (Accountant / CFO)
+  // ================================================================
+  TRANSACTION_APPROVE_WITHDRAW("Duyệt lệnh rút tiền lớn hoặc bị treo (Pending)"),
 
   // ================================================================
-  // 3. NHÓM DỰ ÁN & TIẾN ĐỘ (Project Lifecycle)
+  // 5. PROJECT (read — Employee+; write — Team Leader / Manager)
   // ================================================================
+  PROJECT_VIEW_ACTIVE("Xem dự án / phase đang active (để tạo request)"),
 
-  // --- Employee ---
-  PROJECT_VIEW_ACTIVE("Xem danh sách Dự án/Phase đang Active (Để tạo Request)"),
+  PROJECT_CATEGORY_MANAGE("Quản lý danh mục chi tiêu của dự án"),
+  PROJECT_BUDGET_ALLOCATE("Phân bổ ngân sách Phase / Category"),
+  PROJECT_PHASE_MANAGE("Tạo, cấp vốn, đóng/mở Phase"),
+  PROJECT_MEMBER_MANAGE("Thêm / xóa thành viên dự án"),
 
-  // --- Team Leader ---
-  PROJECT_CATEGORY_MANAGE("Quản lý danh mục chi tiêu dự án (gán Category cho Phase)"),
-  PROJECT_BUDGET_ALLOCATE("Phân bổ ngân sách Phase/Category trong dự án"),
-  PROJECT_PHASE_MANAGE("Quản lý Phase (Tạo mới, Cấp vốn Phase, Đóng/Mở Phase)"),
-  PROJECT_MEMBER_MANAGE("Thêm hoặc Xóa thành viên khỏi dự án"),
-
-  // --- Manager ---
   PROJECT_CREATE("Khởi tạo dự án mới"),
-  PROJECT_UPDATE("Cập nhật thông tin chung dự án (Tên, Mô tả, Ngân sách)"),
-  PROJECT_STATUS_MANAGE("Tạm dừng (Pause) chặn chi tiêu hoặc Đóng (Close) dự án"),
-  PROJECT_ASSIGN_LEADER("Chỉ định hoặc thay đổi Team Leader cho dự án"),
+  PROJECT_UPDATE("Cập nhật thông tin chung dự án"),
+  PROJECT_STATUS_MANAGE("Tạm dừng hoặc đóng dự án"),
+  PROJECT_ASSIGN_LEADER("Chỉ định / thay đổi Team Leader"),
 
-  // --- Admin/Accountant ---
-  PROJECT_VIEW_ALL("Xem danh sách tất cả dự án (Để Audit/Chi tiền)"),
+  PROJECT_VIEW_ALL("Xem tất cả dự án (Accountant / CFO audit)"),
 
   // ================================================================
-  // 4. NHÓM QUẢN LÝ YÊU CẦU (Request Flow — Absolute Delegation)
+  // 6. REQUEST FLOW
+  //    Flow 1 (ADVANCE/EXPENSE/REIMBURSE) : Member → Team Leader → Accountant
+  //    Flow 2 (PROJECT_TOPUP)             : Team Leader → Manager  → Auto
+  //    Flow 3 (DEPARTMENT_TOPUP)          : Manager    → CFO       → Auto
   // ================================================================
-
-  // --- Employee (Tạo) ---
-  REQUEST_CREATE("Tạo yêu cầu (Chi/Ứng/Hoàn ứng) & Upload chứng từ"),
+  REQUEST_CREATE("Tạo yêu cầu chi / ứng / hoàn ứng & upload chứng từ"),
   REQUEST_VIEW_SELF("Xem danh sách & trạng thái yêu cầu của chính mình"),
 
-  // --- Team Leader (Duyệt chi tiêu cá nhân — Luồng 1) ---
-  REQUEST_APPROVE_TEAM_LEADER("Duyệt MỌI yêu cầu chi tiêu của Member, bất kể số tiền"),
+  // Team Leader — Flow 1
+  REQUEST_APPROVE_TEAM_LEADER("Duyệt mọi yêu cầu chi tiêu của Member (Flow 1)"),
 
-  // --- Manager (Duyệt cấp vốn dự án — Luồng 2) ---
-  REQUEST_VIEW_DEPT("Xem các yêu cầu thuộc phòng ban mình quản lý"),
-  REQUEST_APPROVE_PROJECT_TOPUP("Duyệt yêu cầu cấp vốn dự án của Team Leader"),
-  REQUEST_REJECT("Từ chối yêu cầu (Bắt buộc nhập lý do)"),
+  // Manager — Flow 2
+  REQUEST_VIEW_DEPT("Xem yêu cầu thuộc phòng ban mình quản lý"),
+  REQUEST_APPROVE_PROJECT_TOPUP("Duyệt yêu cầu cấp vốn dự án của Team Leader (Flow 2)"),
+  REQUEST_REJECT("Từ chối yêu cầu (bắt buộc nhập lý do)"),
 
-  // --- Admin (Duyệt cấp vốn phòng ban — Luồng 3) ---
+  // CFO — Flow 3
   REQUEST_VIEW_ALL("Xem tất cả yêu cầu toàn hệ thống"),
-  REQUEST_APPROVE_DEPT_TOPUP("Duyệt yêu cầu cấp vốn phòng ban của Manager"),
+  REQUEST_APPROVE_DEPT_TOPUP("Duyệt yêu cầu cấp quota phòng ban của Manager (Flow 3)"),
 
-  // --- Accountant (Kiểm tra chứng từ & Giải ngân) ---
-  REQUEST_VIEW_APPROVED("Xem danh sách yêu cầu ĐÃ DUYỆT (Chờ giải ngân)"),
-  REQUEST_PAYOUT("Thực hiện Thanh toán/Giải ngân (Trừ quỹ → Cộng ví NV)"),
-
-  // ================================================================
-  // 5. NHÓM LƯƠNG & KẾ TOÁN (Payroll & Accounting)
-  // ================================================================
-
-  // --- Employee ---
-  PAYROLL_VIEW_SELF("Xem danh sách kỳ lương & Chi tiết phiếu lương"),
-  PAYROLL_DOWNLOAD("Tải phiếu lương cá nhân (PDF)"),
-
-  // --- Accountant ---
-  PAYROLL_MANAGE("Quản lý kỳ lương (Tạo mới, Upload Excel, Validate)"),
-  PAYROLL_EXECUTE("Chốt & Chi lương hàng loạt (Kèm Auto-netting trừ nợ)"),
-  SYSTEM_FUND_VIEW("Xem số dư Quỹ hệ thống (Mock Bank)"),
-  SYSTEM_FUND_TOPUP("Nạp tiền vào Quỹ hệ thống (Top-up)"),
+  // Accountant — payout
+  REQUEST_VIEW_APPROVED("Xem yêu cầu đã duyệt đang chờ giải ngân"),
+  REQUEST_PAYOUT("Thực hiện giải ngân (trừ quỹ → cộng ví nhân viên)"),
 
   // ================================================================
-  // 6. NHÓM TỔ CHỨC & CẤU HÌNH (Org & Config)
+  // 7. PAYROLL & ACCOUNTING (Accountant)
+  // ================================================================
+  PAYROLL_VIEW_SELF("Xem kỳ lương & chi tiết phiếu lương cá nhân"),
+  PAYROLL_DOWNLOAD("Tải phiếu lương PDF"),
+  PAYROLL_MANAGE("Quản lý kỳ lương (tạo mới, upload Excel, validate)"),
+  PAYROLL_EXECUTE("Chốt & chi lương hàng loạt (kèm auto-netting trừ nợ)"),
+
+  // ================================================================
+  // 8. SYSTEM FUND (Accountant daily ops / CFO oversight)
+  // ================================================================
+  SYSTEM_FUND_VIEW("Xem số dư quỹ hệ thống"),
+  SYSTEM_FUND_TOPUP("Nạp tiền vào quỹ hệ thống từ ngân hàng"),
+
+  // ================================================================
+  // 9. ORG STRUCTURE & CONFIG
   // ================================================================
 
-  // --- Manager ---
-  DEPT_VIEW_DASHBOARD("Xem Dashboard phòng ban (Ngân sách, Báo cáo chi tiêu)"),
+  // Manager
+  DEPT_VIEW_DASHBOARD("Xem dashboard phòng ban (ngân sách, báo cáo chi tiêu)"),
 
-  // --- Admin ---
-  DEPT_MANAGE("Quản lý danh sách phòng ban (Tạo, Sửa tên, Mã phòng)"),
-  DEPT_BUDGET_ALLOCATE("Cấp vốn tổng (Top-up Quota) cho Manager phân bổ"),
-  SYSTEM_CONFIG_MANAGE("Cấu hình tham số hệ thống (Hạn mức Rút, Whitelist)"),
-  DASHBOARD_VIEW_GLOBAL("Xem Dashboard tổng quan (Dòng tiền, Dư nợ toàn cty)"),
-  AUDIT_LOG_VIEW("Xem nhật ký hệ thống (Audit Logs)");
+  // Admin — structural only
+  DEPT_MANAGE("Quản lý danh sách phòng ban (tạo, sửa tên, mã phòng)"),
+  SYSTEM_CONFIG_MANAGE("Cấu hình tham số hệ thống (hạn mức rút, bảo trì...)"),
+  AUDIT_LOG_VIEW("Xem nhật ký hệ thống (audit logs)"),
+
+  // CFO — financial governance
+  DEPT_BUDGET_ALLOCATE("Cấp quota tổng cho phòng ban (System Fund → Dept)"),
+  DASHBOARD_VIEW_GLOBAL("Xem dashboard tổng quan dòng tiền & dư nợ toàn công ty");
 
   private final String description;
 }

@@ -48,16 +48,10 @@ public class Department extends BaseEntity {
   @Builder.Default
   private BigDecimal totalAvailableBalance = BigDecimal.ZERO;
 
-  /**
-   * Optimistic locking for concurrent budget updates.
-   */
-  @Version
-  private Long version;
-
   // ======================== Business Logic ========================
 
   /**
-   * Receive quota from System Fund (when Admin approves QUOTA_TOPUP).
+   * Receive quota from System Fund (when CFO approves DEPARTMENT_TOPUP).
    */
   public void receiveQuota(BigDecimal amount) {
     this.totalProjectQuota = this.totalProjectQuota.add(amount);

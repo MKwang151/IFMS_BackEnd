@@ -10,21 +10,29 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Request entity - Represents a financial request in the approval workflow.
+ * Request entity — financial request in the approval workflow.
  *
- * Three flows (NO escalation):
- * - Flow 1 (ADVANCE/EXPENSE/REIMBURSE): Member → Team Leader → Accountant
- * - Flow 2 (PROJECT_TOPUP): Team Leader → Manager → Auto
- * - Flow 3 (QUOTA_TOPUP): Manager → Admin → Auto
+ * Flow 1 (ADVANCE / EXPENSE / REIMBURSE): Member → Team Leader → Accountant
+ * Flow 2 (PROJECT_TOPUP):                 Team Leader → Manager → Auto
+ * Flow 3 (DEPARTMENT_TOPUP):              Manager → Admin → Auto
+ *
+ * NO escalation — each flow has exactly one approval level.
  */
 @Entity
-@Table(name = "requests", indexes = {
-    @Index(name = "idx_requests_request_code", columnList = "request_code")
-})
+@Table(
+    name = "requests",
+    indexes = {
+        @Index(name = "idx_requests_request_code",   columnList = "request_code"),
+        @Index(name = "idx_requests_requester",      columnList = "requester_id, status"),
+        @Index(name = "idx_requests_status_type",    columnList = "status, type"),
+        @Index(name = "idx_requests_project_status", columnList = "project_id, status")
+    }
+)
 @Getter
 @Setter
 @Builder
@@ -44,25 +52,24 @@ public class Request extends BaseEntity {
   private User requester;
 
   /**
-   * Nullable: NULL for QUOTA_TOPUP (department-level request).
-   * Required for ADVANCE/EXPENSE/REIMBURSE/PROJECT_TOPUP.
+   * NULL for DEPARTMENT_TOPUP (department-level request, no project involved).
+   * Required for ADVANCE / EXPENSE / REIMBURSE / PROJECT_TOPUP.
    */
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "project_id")
   private Project project;
 
   /**
-   * Nullable: NULL for PROJECT_TOPUP and QUOTA_TOPUP.
-   * Required for ADVANCE/EXPENSE/REIMBURSE.
+   * NULL for PROJECT_TOPUP and DEPARTMENT_TOPUP.
+   * Required for ADVANCE / EXPENSE / REIMBURSE.
    */
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "phase_id")
   private ProjectPhase phase;
 
   /**
-   * Nullable: NULL for PROJECT_TOPUP and QUOTA_TOPUP.
-   * Required for ADVANCE/EXPENSE/REIMBURSE.
-   * Links to expense_categories table for budget category tracking.
+   * NULL for PROJECT_TOPUP and DEPARTMENT_TOPUP.
+   * Required for ADVANCE / EXPENSE / REIMBURSE.
    */
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "category_id")
@@ -73,17 +80,23 @@ public class Request extends BaseEntity {
   private RequestType type;
 
   /**
-   * Amount requested. Must be <= available balance of corresponding fund at creation time.
+   * REIMBURSE only: the advance balance record this request is settling.
+   * NULL for all other request types.
+   * A single advance can be partially settled by multiple REIMBURSE requests.
    */
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "advance_balance_id")
+  private AdvanceBalance advanceBalance;
+
   @Column(name = "amount", precision = 19, scale = 2, nullable = false)
   private BigDecimal amount;
 
+  /**
+   * Set by the approver. May be less than amount (partial approval).
+   * This is the amount actually disbursed / allocated.
+   */
   @Column(name = "approved_amount", precision = 19, scale = 2)
   private BigDecimal approvedAmount;
-
-  @OneToMany(mappedBy = "request", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-  @Builder.Default
-  private List<RequestAttachment> attachments = new ArrayList<>();
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 25)
@@ -96,6 +109,17 @@ public class Request extends BaseEntity {
   @Column(name = "description", columnDefinition = "TEXT")
   private String description;
 
+  /**
+   * Timestamp when status transitioned to PAID.
+   * Enables SLA reporting and "overdue disbursement" queries without joining RequestHistory.
+   */
+  @Column(name = "paid_at")
+  private LocalDateTime paidAt;
+
+  @OneToMany(mappedBy = "request", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+  @Builder.Default
+  private List<RequestAttachment> attachments = new ArrayList<>();
+
   @OneToMany(mappedBy = "request", cascade = CascadeType.ALL, orphanRemoval = true)
   @Builder.Default
   private List<RequestHistory> histories = new ArrayList<>();
@@ -103,48 +127,43 @@ public class Request extends BaseEntity {
   // ======================== Business Logic ========================
 
   /**
-   * Can only cancel when status is PENDING_APPROVAL.
+   * Cancel is only allowed while PENDING_APPROVAL.
+   * Once the request reaches PENDING_ACCOUNTANT, the approver has already acted
+   * and the accountant may be processing it — cancellation is no longer permitted.
    */
   public boolean isCancellable() {
     return status == RequestStatus.PENDING_APPROVAL;
   }
 
-  /**
-   * Whether the request is awaiting any form of approval/processing.
-   */
   public boolean isPending() {
     return status == RequestStatus.PENDING_APPROVAL || status == RequestStatus.PENDING_ACCOUNTANT;
   }
 
   /**
-   * Whether this request type requires proof of expense (attachments).
+   * EXPENSE and REIMBURSE require invoice/receipt attachments.
+   * ADVANCE does not — it is a pre-approval before spending occurs.
    */
   public boolean requiresProof() {
     return type == RequestType.EXPENSE || type == RequestType.REIMBURSE;
   }
 
-  /**
-   * Whether this is a personal expense request (Flow 1).
-   */
   public boolean isPersonalExpense() {
-    return type == RequestType.ADVANCE || type == RequestType.EXPENSE || type == RequestType.REIMBURSE;
+    return type == RequestType.ADVANCE
+        || type == RequestType.EXPENSE
+        || type == RequestType.REIMBURSE;
   }
 
-  /**
-   * Whether this is a fund top-up request (Flow 2 or 3).
-   */
   public boolean isTopUp() {
-    return type == RequestType.PROJECT_TOPUP || type == RequestType.QUOTA_TOPUP;
+    return type == RequestType.PROJECT_TOPUP || type == RequestType.DEPARTMENT_TOPUP;
   }
 
   // ======================== Attachment Helpers ========================
 
   public void addAttachment(FileStorage file) {
-    RequestAttachment attachment = RequestAttachment.builder()
-            .request(this)
-            .file(file)
-            .build();
-    this.attachments.add(attachment);
+    this.attachments.add(RequestAttachment.builder()
+        .request(this)
+        .file(file)
+        .build());
   }
 
   public void removeAttachment(Long fileId) {
@@ -153,7 +172,7 @@ public class Request extends BaseEntity {
 
   public List<FileStorage> getAttachmentFiles() {
     return this.attachments.stream()
-            .map(RequestAttachment::getFile)
-            .toList();
+        .map(RequestAttachment::getFile)
+        .toList();
   }
 }
