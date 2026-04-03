@@ -1,31 +1,54 @@
 package com.mkwang.backend.modules.request.entity;
 
 /**
- * Status lifecycle of a request in the approval workflow.
+ * Status lifecycle of a request in the approval workflow (Option 2b+ — Segregation of Duties).
  *
- * Flow 1 (ADVANCE / EXPENSE / REIMBURSE):
- *   PENDING_APPROVAL → PENDING_ACCOUNTANT → PAID
- *                    ↘ REJECTED
+ * Flow 1 — ADVANCE / EXPENSE / REIMBURSE (HIGH RISK):
+ *   PENDING → APPROVED_BY_TEAM_LEADER → PENDING_ACCOUNTANT_EXECUTION → PAID
+ *         ↘ REJECTED
+ *         ↘ CANCELLED (only while PENDING)
+ *   Accountant phải execute giải ngân (checkpoint cuối vì có chứng từ gốc).
  *
- * Flow 2 (PROJECT_TOPUP):
- *   PENDING_APPROVAL → PAID  (auto on Manager approval)
- *                    ↘ REJECTED
+ * Flow 2 — PROJECT_TOPUP (MEDIUM RISK):
+ *   PENDING → APPROVED_BY_MANAGER → [Auto-pay scheduler] → PAID
+ *         ↘ REJECTED
+ *   Không cần Accountant duyệt (chỉ ghi sổ post-facto).
  *
- * Flow 3 (DEPARTMENT_TOPUP):
- *   PENDING_APPROVAL → PAID  (auto on CFO approval)
- *                    ↘ REJECTED
+ * Flow 3 — DEPARTMENT_TOPUP (LOW RISK):
+ *   PENDING → APPROVED_BY_CFO → [Auto-pay scheduler] → PAID
+ *         ↘ REJECTED
+ *   Không cần Accountant duyệt (chỉ ghi sổ post-facto).
  *
- * Any flow (only while PENDING_APPROVAL):
- *   PENDING_APPROVAL → CANCELLED
- *
- * NO escalation — each flow has exactly one approval level.
- * PENDING_APPROVAL is unified — the approver is inferred from request.type.
+ * Segregation of Duties: Decision (duyệt) ≠ Execution (giải ngân)
  */
 public enum RequestStatus {
-  PENDING_APPROVAL,   // Chờ duyệt nghiệp vụ (TL / Manager / CFO tùy type)
-  PENDING_ACCOUNTANT, // Flow 1 only — chờ Accountant kiểm tra chứng từ & giải ngân
-  APPROVED,           // Đã duyệt nghiệp vụ — Flow 2 & 3 tự chuyển PAID ngay sau đây
-  PAID,               // Đã giải ngân / đã cấp vốn hoàn tất
-  REJECTED,           // Bị từ chối bởi cấp duyệt hoặc Accountant
-  CANCELLED           // Người tạo tự hủy (chỉ được phép khi đang PENDING_APPROVAL)
+
+  // ─ Waiting for decision ─
+  PENDING,
+  // Dùng cho tất cả flows: Member vừa tạo request, chờ approver duyệt
+
+  // ─ Flow 1: ADVANCE/EXPENSE/REIMBURSE ─
+  APPROVED_BY_TEAM_LEADER,
+  // TEAM_LEADER đã duyệt, chờ Accountant execute (giải ngân + review chứng từ)
+
+  PENDING_ACCOUNTANT_EXECUTION,
+  // Flow 1 only — chờ Accountant kiểm tra chứng từ và click "giải ngân"
+
+  // ─ Flow 2: PROJECT_TOPUP ─
+  APPROVED_BY_MANAGER,
+  // Manager đã duyệt, scheduler sẽ auto-pay trong vài phút
+
+  // ─ Flow 3: DEPARTMENT_TOPUP ─
+  APPROVED_BY_CFO,
+  // CFO đã duyệt, scheduler sẽ auto-pay trong vài phút
+
+  // ─ Terminal states ─
+  PAID,
+  // Đã giải ngân (Flow 1: Accountant executed, Flow 2/3: auto-paid)
+
+  REJECTED,
+  // Bị từ chối bởi approver (TL/Manager/CFO) hoặc Accountant (Flow 1 only)
+
+  CANCELLED
+  // Người tạo request tự hủy (chỉ được phép khi PENDING hoặc chưa lock funds)
 }

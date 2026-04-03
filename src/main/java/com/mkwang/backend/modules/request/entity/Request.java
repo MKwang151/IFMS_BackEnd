@@ -101,7 +101,7 @@ public class Request extends BaseEntity {
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 25)
   @Builder.Default
-  private RequestStatus status = RequestStatus.PENDING_APPROVAL;
+  private RequestStatus status = RequestStatus.PENDING;
 
   @Column(name = "reject_reason", columnDefinition = "TEXT")
   private String rejectReason;
@@ -127,16 +127,21 @@ public class Request extends BaseEntity {
   // ======================== Business Logic ========================
 
   /**
-   * Cancel is only allowed while PENDING_APPROVAL.
-   * Once the request reaches PENDING_ACCOUNTANT, the approver has already acted
-   * and the accountant may be processing it — cancellation is no longer permitted.
+   * Cancel is only allowed while PENDING (not yet approved by anyone).
+   * Once approval happens, request enters approval workflow and cancellation not permitted.
    */
   public boolean isCancellable() {
-    return status == RequestStatus.PENDING_APPROVAL;
+    return status == RequestStatus.PENDING;
   }
 
+  /**
+   * Is request in progress (not terminal)?
+   * Terminal states: PAID, REJECTED, CANCELLED
+   */
   public boolean isPending() {
-    return status == RequestStatus.PENDING_APPROVAL || status == RequestStatus.PENDING_ACCOUNTANT;
+    return status != RequestStatus.PAID
+        && status != RequestStatus.REJECTED
+        && status != RequestStatus.CANCELLED;
   }
 
   /**
