@@ -34,7 +34,7 @@ public class SequenceService {
     static {
         SQL_CACHE = new EnumMap<>(BusinessCodeType.class);
         for (BusinessCodeType type : BusinessCodeType.values()) {
-            if (type.isRequiresSequence()) {
+            if (type.needsSequence()) {
                 SQL_CACHE.put(type, "SELECT nextval('" + type.getSequenceName() + "')");
             }
         }
@@ -44,7 +44,7 @@ public class SequenceService {
      * Lấy nextval cho một {@link BusinessCodeType}.
      * SQL đã được cache sẵn → zero allocation per call.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public long getNextValue(BusinessCodeType codeType) {
         String sql = SQL_CACHE.get(codeType);
         if (sql == null) {
@@ -58,7 +58,7 @@ public class SequenceService {
      * Lấy nextval bằng tên sequence (dùng cho trường hợp dynamic ngoài enum).
      * Sanitize input để chống SQL injection.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public long getNextValue(String sequenceName) {
         if (sequenceName == null || sequenceName.isBlank()) {
             throw new IllegalArgumentException("Sequence name must not be null or blank");

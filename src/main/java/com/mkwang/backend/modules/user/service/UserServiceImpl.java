@@ -3,6 +3,7 @@ package com.mkwang.backend.modules.user.service;
 import com.mkwang.backend.common.exception.BadRequestException;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeGenerator;
+import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
 import com.mkwang.backend.modules.mail.publisher.MailPublisher;
 import com.mkwang.backend.modules.mail.publisher.MailType;
 import com.mkwang.backend.modules.organization.entity.Department;
@@ -62,7 +63,7 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found: " + request.getDepartmentId()));
 
         // 4. Sinh mã nhân viên và mật khẩu tạm
-        String employeeCode    = "EMP244";
+        String employeeCode    = codeGenerator.generate(BusinessCodeType.EMPLOYEE);
         String tempPassword    = generateTemporaryPassword();
 
         // 5. Tạo User
