@@ -39,6 +39,7 @@ public class SecurityConfig {
                         "/auth/forgot-password",
                         "/auth/verify-password-reset",
                         "/auth/reset-password",
+                        "/auth/first-login/complete",
                         "/test/public",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",

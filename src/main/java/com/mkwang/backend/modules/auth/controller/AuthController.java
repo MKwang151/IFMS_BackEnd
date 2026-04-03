@@ -1,6 +1,7 @@
 package com.mkwang.backend.modules.auth.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
+import com.mkwang.backend.common.exception.BadRequestException;
 import com.mkwang.backend.modules.auth.dto.request.*;
 import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -20,6 +22,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Authentication", description = "Authentication management APIs")
 public class AuthController {
 
@@ -95,14 +98,26 @@ public class AuthController {
                 Map.of("message", "Password reset successfully")));
     }
 
+    // ── POST /auth/first-login/complete ─────────────────────────
+
+    @PostMapping("/first-login/complete")
+    @Operation(summary = "Complete first-login setup: change password + set PIN, returns full tokens")
+    public ResponseEntity<ApiResponse<AuthenticationResponse>> firstLoginSetup(
+            @Valid @RequestBody FirstLoginSetupRequest request) {
+        AuthenticationResponse response = authService.firstLoginSetup(request);
+        return ResponseEntity.ok(ApiResponse.success("Account setup completed successfully", response));
+    }
+
     // ── POST /auth/change-password ───────────────────────────────
 
     @PostMapping("/change-password")
     @Operation(summary = "Change password on first login")
+    @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<ApiResponse<Map<String, String>>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
             Authentication authentication) {
         authService.changePassword(request, authentication.getName());
+        log.info(authentication.getName());
         return ResponseEntity.ok(ApiResponse.success("Success",
                 Map.of("message", "Password changed successfully")));
     }
@@ -123,6 +138,6 @@ public class AuthController {
         if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
             return authHeader.substring(BEARER_PREFIX.length());
         }
-        throw new IllegalArgumentException("Invalid Authorization header");
+        throw new BadRequestException("Invalid Authorization header");
     }
 }

@@ -1,3 +1,4 @@
+
 # 📋 RÀNG BUỘC NGHIỆP VỤ TỔNG THỂ (Business Constraints)
 
 > **Dự án:** Internal Finance Management System (IFMS)

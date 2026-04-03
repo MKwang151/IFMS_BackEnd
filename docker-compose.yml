@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ifms-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: IFMSdb
+      POSTGRES_USER: IFMSadmin
+      POSTGRES_PASSWORD: IFMS
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: ifms-redis
@@ -25,5 +38,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   redis_data:
   rabbitmq_data:

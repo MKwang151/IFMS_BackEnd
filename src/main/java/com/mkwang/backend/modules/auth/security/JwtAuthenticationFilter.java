@@ -102,7 +102,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if (!jwtService.isTokenVersionValid(jwt, userId)) {
                     log.info("Token version mismatch for user: {} — session invalidated by new login", userEmail);
                     authenticationEntryPoint.commence(request, response,
-                            new BadCredentialsException("Tài khoản đã đăng nhập ở thiết bị khác."));
+                            new BadCredentialsException("Your session has expired due to a new login from another device."));
                     return;
                 }
 

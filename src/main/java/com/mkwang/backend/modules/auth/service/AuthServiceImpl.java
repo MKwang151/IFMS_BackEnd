@@ -11,11 +11,14 @@ import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.mail.publisher.MailPublisher;
 import com.mkwang.backend.modules.mail.publisher.MailType;
 import com.mkwang.backend.modules.user.entity.User;
+import com.mkwang.backend.modules.user.entity.UserSecuritySettings;
 import com.mkwang.backend.modules.user.repository.UserRepository;
+import com.mkwang.backend.modules.user.repository.UserSecuritySettingsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +27,7 @@ import com.mkwang.backend.modules.audit.context.AuditContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -32,21 +36,28 @@ import java.util.concurrent.TimeUnit;
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
+    private final UserSecuritySettingsRepository userSecuritySettingsRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
     private final SecureRandom secureRandom;
     private final MailPublisher mailPublisher;
-    private final String PASSWORD_RESET_PREFIX = "password_reset_email: ";
+
+    private static final String PASSWORD_RESET_PREFIX    = "password_reset_email: ";
+    private static final String FIRST_LOGIN_SETUP_PREFIX = "first_login_setup:";
 
 
 
     @Value("${app.otp.ttl}")
-    private Long otpExpiration;
+    private long otpExpiration;
 
     @Value("${app.otp.length}")
-    private int OTP_LENGTH;
+    private int otpLength;
+
+    @Value("${app.auth.setup-token-ttl-minutes}")
+    private long setupTokenTtlMinutes;
 
     // ── POST /auth/login ─────────────────────────────────────────
 
@@ -65,6 +76,22 @@ public class AuthServiceImpl implements AuthService {
         // JwtFilter skip nên AuditContextFilter không đọc được actorId.
         // Phải set thủ công sau khi authenticationManager xác thực thành công.
         AuditContextHolder.setActorId(user.getId());
+
+        // First-login gate: chưa phát token, yêu cầu đổi mật khẩu + đặt PIN
+        if (Boolean.TRUE.equals(user.getIsFirstLogin())) {
+            String setupToken = UUID.randomUUID().toString();
+            stringRedisTemplate.opsForValue().set(
+                    FIRST_LOGIN_SETUP_PREFIX + setupToken,
+                    String.valueOf(user.getId()),
+                    setupTokenTtlMinutes,
+                    TimeUnit.MINUTES);
+            log.info("First-login setup token issued for user: {}", user.getEmail());
+            return AuthenticationResponse.builder()
+                    .requiresSetup(true)
+                    .setupToken(setupToken)
+                    .user(buildUserInfo(user))
+                    .build();
+        }
 
         // Single-session: tăng tokenVersion → invalidate mọi token cũ
         user.setTokenVersion(user.getTokenVersion() + 1);
@@ -149,7 +176,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String key = PASSWORD_RESET_PREFIX + request.getEmail();
-        String otp = generateDigitString(OTP_LENGTH);
+        String otp = generateDigitString(otpLength);
 
         ForgotPasswordOtpData data = ForgotPasswordOtpData.builder()
                 .email(request.getEmail())
@@ -220,16 +247,77 @@ public class AuthServiceImpl implements AuthService {
     public void changePassword(ChangePasswordRequest request, String username) {
         var user = userRepository.findByEmail(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        if (!user.getIsFirstLogin()) {
-            throw new BadRequestException("This endpoint is only for first login password change");
+        log.info("Changing password for user: {}", username);
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+        if (!request.getNewPassword().equals(request.getConfirmNewPassword())) {
+            throw new BadRequestException("New passwords do not match");
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
+
+    // ── POST /auth/first-login/complete ─────────────────────────
+
+    @Override
+    @Transactional
+    public AuthenticationResponse firstLoginSetup(FirstLoginSetupRequest request) {
+        // 1. Validate setup token
+        String redisKey = FIRST_LOGIN_SETUP_PREFIX + request.getSetupToken();
+        String userIdRaw = stringRedisTemplate.opsForValue().get(redisKey);
+        if (userIdRaw == null || userIdRaw.isBlank()) {
+            throw new BadRequestException("Setup token has expired or is invalid");
+        }
+
+        Long userId;
+        try {
+            userId = Long.parseLong(userIdRaw);
+        } catch (NumberFormatException ex) {
+            throw new BadRequestException("Setup token has expired or is invalid");
+        }
+
+        // 2. Load user
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (!Boolean.TRUE.equals(user.getIsFirstLogin())) {
+            throw new BadRequestException("Account setup has already been completed");
+        }
+
+        // 3. Validate passwords
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new BadRequestException("Passwords do not match");
+        }
+
+        // 4. Change password
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+
+        // 5. Set transaction PIN
+        UserSecuritySettings settings = user.getSecuritySettings();
+        if (settings == null) {
+            settings = UserSecuritySettings.builder()
+                    .user(user)
+                    .build();
+        }
+        settings.setTransactionPin(passwordEncoder.encode(request.getPin()));
+        userSecuritySettingsRepository.save(settings);
+
+        // 6. Mark first-login complete + bump tokenVersion (single-session)
         user.setIsFirstLogin(false);
+        user.setTokenVersion(user.getTokenVersion() + 1);
         userRepository.save(user);
 
-        log.info("First login password changed for: {}", username);
+        // 7. Invalidate setup token — one-time use
+        stringRedisTemplate.delete(redisKey);
+
+        // 8. Cache new tokenVersion and issue full tokens
+        jwtService.cacheTokenVersion(user.getId(), user.getTokenVersion());
+        AuditContextHolder.setActorId(user.getId());
+
+        log.info("First-login setup completed for user: {}", user.getEmail());
+        return generateTokenResponse(user);
     }
 
     // ── GET /auth/me ─────────────────────────────────────────────
