@@ -1,6 +1,7 @@
 package com.mkwang.backend.modules.accounting.entity;
 
 import com.mkwang.backend.common.base.BaseEntity;
+import com.mkwang.backend.common.exception.InsufficientSystemFundException;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -45,7 +46,7 @@ public class SystemFund extends BaseEntity {
    */
   public void debit(BigDecimal amount) {
     if (!hasSufficientFund(amount)) {
-      throw new IllegalStateException("Insufficient system fund");
+      throw new InsufficientSystemFundException(amount, totalBalance);
     }
     this.totalBalance = this.totalBalance.subtract(amount);
   }

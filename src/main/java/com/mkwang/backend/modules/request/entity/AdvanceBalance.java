@@ -1,5 +1,7 @@
 package com.mkwang.backend.modules.request.entity;
 
+import com.mkwang.backend.common.exception.AdvanceBalanceAlreadySettledException;
+import com.mkwang.backend.common.exception.InvalidSettlementAmountException;
 import com.mkwang.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
@@ -148,13 +150,13 @@ public class AdvanceBalance {
 
   private void validateSettlementAmount(BigDecimal amount) {
     if (isSettled()) {
-      throw new IllegalStateException("Advance balance is already fully settled");
+      throw new AdvanceBalanceAlreadySettledException(this.id);
     }
     if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-      throw new IllegalArgumentException("Settlement amount must be positive");
+      throw new InvalidSettlementAmountException("Settlement amount must be positive");
     }
     if (amount.compareTo(this.remainingAmount) > 0) {
-      throw new IllegalArgumentException(
+      throw new InvalidSettlementAmountException(
           "Settlement amount " + amount + " exceeds remaining balance " + this.remainingAmount);
     }
   }

@@ -1,6 +1,7 @@
 package com.mkwang.backend.modules.wallet.entity;
 
 import com.mkwang.backend.common.base.BaseEntity;
+import com.mkwang.backend.common.exception.InsufficientWalletBalanceException;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -92,7 +93,7 @@ public class Wallet extends BaseEntity {
    */
   public void debit(BigDecimal amount) {
     if (!hasSufficientBalance(amount)) {
-      throw new IllegalStateException("Insufficient available balance");
+      throw new InsufficientWalletBalanceException(amount, getAvailableBalance(), "debit");
     }
     this.balance = this.balance.subtract(amount);
   }
@@ -104,7 +105,7 @@ public class Wallet extends BaseEntity {
    */
   public void lock(BigDecimal amount) {
     if (!hasSufficientBalance(amount)) {
-      throw new IllegalStateException("Insufficient available balance to lock");
+      throw new InsufficientWalletBalanceException(amount, getAvailableBalance(), "lock");
     }
     this.lockedBalance = this.lockedBalance.add(amount);
   }

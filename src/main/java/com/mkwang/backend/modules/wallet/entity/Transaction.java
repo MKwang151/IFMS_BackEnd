@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.wallet.entity;
 
+import com.mkwang.backend.common.exception.InvalidTransactionStatusTransitionException;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -115,8 +116,7 @@ public class Transaction {
 
   private void assertPending() {
     if (this.status != TransactionStatus.PENDING) {
-      throw new IllegalStateException(
-          "Status transition only allowed from PENDING, current: " + this.status);
+      throw new InvalidTransactionStatusTransitionException(this.status);
     }
   }
 }
