@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.mail.publisher;
 
+import com.mkwang.backend.common.exception.InternalSystemException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -52,7 +53,7 @@ public class MailPublisher {
     public void publish(MailType type, String to, String subject, String content) {
         MailStrategy strategy = strategies.get(type);
         if (strategy == null) {
-            throw new IllegalArgumentException("No MailStrategy registered for type: " + type);
+            throw new InternalSystemException("No MailStrategy registered for type: " + type);
         }
         log.debug("[MailPublisher] Dispatching {} email to: {}", type, to);
         strategy.publish(to, subject, content);

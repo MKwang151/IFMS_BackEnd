@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.mail.consumers;
 
+import com.mkwang.backend.common.exception.InternalSystemException;
 import com.mkwang.backend.modules.mail.service.BrevoMailService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +36,7 @@ public class MailConsumer {
         log.debug("[MailConsumer] Received onboard email for: {}", email.to());
         boolean success = mailService.sendOnBoard(email.to(), email.subject(), email.content());
         if (!success) {
-            throw new RuntimeException("Brevo send failed for onboard: " + email.to());
+            throw new InternalSystemException("Brevo send failed for onboard: " + email.to());
         }
     }
 
@@ -53,7 +54,7 @@ public class MailConsumer {
         log.debug("[MailConsumer] Received warning email for: {}", email.to());
         boolean success = mailService.sendOnBoard(email.to(), email.subject(), email.content());
         if (!success) {
-            throw new RuntimeException("Brevo send failed for warning: " + email.to());
+            throw new InternalSystemException("Brevo send failed for warning: " + email.to());
         }
     }
 
@@ -71,7 +72,7 @@ public class MailConsumer {
         log.debug("[MailConsumer] Received forget password email for: {}", email.to());
         boolean success = mailService.sendForgetPassword(email.to(), email.subject(), email.content());
         if (!success) {
-            throw new RuntimeException("Brevo send failed for forget password: " + email.to());
+            throw new InternalSystemException("Brevo send failed for forget password: " + email.to());
         }
     }
 

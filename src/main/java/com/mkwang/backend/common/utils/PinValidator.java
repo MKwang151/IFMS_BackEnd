@@ -1,5 +1,6 @@
 package com.mkwang.backend.common.utils;
 
+import com.mkwang.backend.common.exception.BadRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -71,11 +72,11 @@ public class PinValidator {
      */
     public void validate(String pin) {
         if (!isValidFormat(pin)) {
-            throw new IllegalArgumentException(
+            throw new BadRequestException(
                     "PIN must be exactly " + pinLength + " digits (numeric only).");
         }
         if (isWeakPin(pin)) {
-            throw new IllegalArgumentException(
+            throw new BadRequestException(
                     "PIN is too weak. Avoid sequential digits (12345) or repeated digits (11111).");
         }
     }

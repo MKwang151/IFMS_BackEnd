@@ -1,5 +1,6 @@
 package com.mkwang.backend.common.utils.businesscodegenerator;
 
+import com.mkwang.backend.common.exception.BadRequestException;
 import java.time.LocalDate;
 
 /**
@@ -36,7 +37,7 @@ public enum BusinessCodeType {
         @Override
         public String format(long seq, CodeFormatUtils utils, String... params) {
             if (params.length == 0 || params[0] == null || params[0].isBlank()) {
-                throw new IllegalArgumentException("Department code must be provided");
+                throw new BadRequestException("Department code must be provided");
             }
             return utils.sanitizeSlug(params[0], 20);
         }
@@ -92,7 +93,7 @@ public enum BusinessCodeType {
                 year = Integer.parseInt(params[0]);
                 month = Integer.parseInt(params[1]);
                 if (month < 1 || month > 12) {
-                    throw new IllegalArgumentException("Month must be between 1 and 12, got: " + month);
+                    throw new BadRequestException("Month must be between 1 and 12, got: " + month);
                 }
             } else {
                 LocalDate now = LocalDate.now();
@@ -108,7 +109,7 @@ public enum BusinessCodeType {
         @Override
         public String format(long seq, CodeFormatUtils utils, String... params) {
             if (params.length < 3 || params[0] == null || params[1] == null || params[2] == null) {
-                throw new IllegalArgumentException("PAYSLIP requires: employeeCode, month, year");
+                throw new BadRequestException("PAYSLIP requires: employeeCode, month, year");
             }
             String empCode = utils.sanitizeSlug(params[0], 10);
             int month = Integer.parseInt(params[1]);

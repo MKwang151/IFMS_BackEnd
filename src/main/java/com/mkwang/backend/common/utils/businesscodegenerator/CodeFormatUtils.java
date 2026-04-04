@@ -1,5 +1,6 @@
 package com.mkwang.backend.common.utils.businesscodegenerator;
 
+import com.mkwang.backend.common.exception.BadRequestException;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
@@ -37,11 +38,11 @@ public class CodeFormatUtils {
      */
     public String sanitizeSlug(String input, int maxLen) {
         if (input == null || input.isBlank()) {
-            throw new IllegalArgumentException("Slug/code must not be null or blank");
+            throw new BadRequestException("Slug/code must not be null or blank");
         }
         String slug = NON_ALPHANUM.matcher(input.trim().toUpperCase()).replaceAll("");
         if (slug.isEmpty()) {
-            throw new IllegalArgumentException("Slug/code contains no valid characters: " + input);
+            throw new BadRequestException("Slug/code contains no valid characters: " + input);
         }
         return slug.length() > maxLen ? slug.substring(0, maxLen) : slug;
     }

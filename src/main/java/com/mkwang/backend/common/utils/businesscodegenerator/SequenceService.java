@@ -1,5 +1,6 @@
 package com.mkwang.backend.common.utils.businesscodegenerator;
 
+import com.mkwang.backend.common.exception.InternalSystemException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
@@ -48,7 +49,7 @@ public class SequenceService {
     public long getNextValue(BusinessCodeType codeType) {
         String sql = SQL_CACHE.get(codeType);
         if (sql == null) {
-            throw new IllegalStateException(
+            throw new InternalSystemException(
                     "BusinessCodeType." + codeType.name() + " does not use a PostgreSQL sequence");
         }
         return ((Number) entityManager.createNativeQuery(sql).getSingleResult()).longValue();
@@ -61,11 +62,11 @@ public class SequenceService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public long getNextValue(String sequenceName) {
         if (sequenceName == null || sequenceName.isBlank()) {
-            throw new IllegalArgumentException("Sequence name must not be null or blank");
+            throw new InternalSystemException("Sequence name must not be null or blank");
         }
         String sanitized = SAFE_SEQ_NAME.matcher(sequenceName).replaceAll("");
         if (sanitized.isEmpty()) {
-            throw new IllegalArgumentException("Sequence name contains no valid characters: " + sequenceName);
+            throw new InternalSystemException("Sequence name contains no valid characters: " + sequenceName);
         }
         String sql = "SELECT nextval('" + sanitized + "')";
         return ((Number) entityManager.createNativeQuery(sql).getSingleResult()).longValue();
