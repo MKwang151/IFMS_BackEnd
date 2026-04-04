@@ -2,6 +2,8 @@ package com.mkwang.backend.modules.user.entity;
 
 import com.mkwang.backend.common.base.BaseEntity;
 import com.mkwang.backend.modules.organization.entity.Department;
+import com.mkwang.backend.modules.profile.entity.UserProfile;
+import com.mkwang.backend.modules.profile.entity.UserSecuritySettings;
 import jakarta.persistence.*;
 import lombok.*;
 

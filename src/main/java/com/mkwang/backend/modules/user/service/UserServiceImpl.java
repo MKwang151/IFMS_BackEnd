@@ -8,14 +8,14 @@ import com.mkwang.backend.modules.mail.publisher.MailPublisher;
 import com.mkwang.backend.modules.mail.publisher.MailType;
 import com.mkwang.backend.modules.organization.entity.Department;
 import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
+import com.mkwang.backend.modules.profile.service.ProfileService;
 import com.mkwang.backend.modules.user.dto.request.OnboardUserRequest;
 import com.mkwang.backend.modules.user.dto.response.OnboardUserResponse;
 import com.mkwang.backend.modules.user.entity.*;
 import com.mkwang.backend.modules.user.repository.RoleRepository;
 import com.mkwang.backend.modules.user.repository.UserRepository;
-import com.mkwang.backend.modules.wallet.entity.Wallet;
 import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
-import com.mkwang.backend.modules.wallet.repository.WalletRepository;
+import com.mkwang.backend.modules.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
-import java.math.BigDecimal;
 import java.security.SecureRandom;
 
 @Slf4j
@@ -36,7 +35,8 @@ public class UserServiceImpl implements UserService {
     private final UserRepository           userRepository;
     private final RoleRepository           roleRepository;
     private final DepartmentRepository     departmentRepository;
-    private final WalletRepository         walletRepository;
+    private final ProfileService           profileService;
+    private final WalletService            walletService;
     private final PasswordEncoder          passwordEncoder;
     private final BusinessCodeGenerator    codeGenerator;
     private final SpringTemplateEngine     templateEngine;
@@ -79,22 +79,10 @@ public class UserServiceImpl implements UserService {
         user = userRepository.save(user);
 
         // 6. Tạo UserProfile
-        UserProfile profile = UserProfile.builder()
-                .user(user)
-                .employeeCode(employeeCode)
-                .jobTitle(request.getJobTitle())
-                .phoneNumber(request.getPhoneNumber())
-                .build();
-        user.setProfile(profile);
-        userRepository.save(user);
+        profileService.createProfile(user, employeeCode, request.getJobTitle(), request.getPhoneNumber());
 
         // 7. Tạo Wallet
-        walletRepository.save(Wallet.builder()
-                .ownerType(WalletOwnerType.USER)
-                .ownerId(user.getId())
-                .balance(BigDecimal.ZERO)
-                .lockedBalance(BigDecimal.ZERO)
-                .build());
+        walletService.createWallet(WalletOwnerType.USER, user.getId());
 
         // 8. Gửi onboard email
         sendOnboardEmail(user.getEmail(), user.getFullName(), employeeCode,

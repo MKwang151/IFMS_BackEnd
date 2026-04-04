@@ -10,10 +10,9 @@ import com.mkwang.backend.modules.auth.security.JwtService;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.mail.publisher.MailPublisher;
 import com.mkwang.backend.modules.mail.publisher.MailType;
+import com.mkwang.backend.modules.profile.service.ProfileService;
 import com.mkwang.backend.modules.user.entity.User;
-import com.mkwang.backend.modules.user.entity.UserSecuritySettings;
 import com.mkwang.backend.modules.user.repository.UserRepository;
-import com.mkwang.backend.modules.user.repository.UserSecuritySettingsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +35,7 @@ import java.util.concurrent.TimeUnit;
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
-    private final UserSecuritySettingsRepository userSecuritySettingsRepository;
+    private final ProfileService profileService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -295,14 +294,7 @@ public class AuthServiceImpl implements AuthService {
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
 
         // 5. Set transaction PIN
-        UserSecuritySettings settings = user.getSecuritySettings();
-        if (settings == null) {
-            settings = UserSecuritySettings.builder()
-                    .user(user)
-                    .build();
-        }
-        settings.setTransactionPin(passwordEncoder.encode(request.getPin()));
-        userSecuritySettingsRepository.save(settings);
+        profileService.createSecuritySettings(user, passwordEncoder.encode(request.getPin()));
 
         // 6. Mark first-login complete + bump tokenVersion (single-session)
         user.setIsFirstLogin(false);
