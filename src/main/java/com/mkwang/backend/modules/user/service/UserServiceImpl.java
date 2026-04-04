@@ -101,6 +101,14 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
 
+    // ── GET /users/{id} (internal) ───────────────────────────────
+
+    @Override
+    public User getUserById(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
     private void sendOnboardEmail(String email, String fullName, String employeeCode,

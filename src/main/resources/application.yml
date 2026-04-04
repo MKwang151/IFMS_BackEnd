@@ -117,6 +117,13 @@ spring:
       routing-key: ${RABBITMQ_AUDIT_ROUTING_KEY:audit}
       dlq: ${RABBITMQ_AUDIT_DLQ:auditDLQ}
       dlq-routing-key: ${RABBITMQ_AUDIT_DLQ_ROUTING_KEY:auditDead}
+    notification:
+      exchange: ${RABBITMQ_NOTIFICATION_EXCHANGE:notificationExchange}
+      dlx: ${RABBITMQ_NOTIFICATION_DLX:notificationDLX}
+      queue: ${RABBITMQ_NOTIFICATION_QUEUE:notificationQueue}
+      routing-key: ${RABBITMQ_NOTIFICATION_ROUTING_KEY:notification.send}
+      dlq: ${RABBITMQ_NOTIFICATION_DLQ:notificationDLQ}
+      dlq-routing-key: ${RABBITMQ_NOTIFICATION_DLQ_ROUTING_KEY:notificationDead}
 
 
 
@@ -173,3 +180,5 @@ app:
     length: ${OTP_LENGTH:6}
   auth:
     setup-token-ttl-minutes: ${SETUP_TOKEN_TTL_MINUTES:15}   # First-login setup token TTL (phút)
+  notification:
+    cleanup-cron: ${NOTIFICATION_CLEANUP_CRON:0 0 0 * * *}   # Xóa notification đã đọc lúc 00:00 mỗi ngày

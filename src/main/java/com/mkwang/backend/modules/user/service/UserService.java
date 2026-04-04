@@ -2,8 +2,11 @@ package com.mkwang.backend.modules.user.service;
 
 import com.mkwang.backend.modules.user.dto.request.OnboardUserRequest;
 import com.mkwang.backend.modules.user.dto.response.OnboardUserResponse;
+import com.mkwang.backend.modules.user.entity.User;
 
 public interface UserService {
 
     OnboardUserResponse onboardUser(OnboardUserRequest request);
+
+    User getUserById(Long userId);
 }
