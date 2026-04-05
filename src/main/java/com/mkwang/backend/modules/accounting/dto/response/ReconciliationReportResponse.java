@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.accounting.dto;
+package com.mkwang.backend.modules.accounting.dto.response;
 
 import lombok.Builder;
 import lombok.Data;
@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @Builder
-public class ReconciliationReportDto {
+public class ReconciliationReportResponse {
 
     private LocalDateTime generatedAt;
 

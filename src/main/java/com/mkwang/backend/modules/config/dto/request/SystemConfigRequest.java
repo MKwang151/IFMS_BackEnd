@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.config.dto;
+package com.mkwang.backend.modules.config.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

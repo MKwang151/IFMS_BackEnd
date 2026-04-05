@@ -1,8 +1,8 @@
 package com.mkwang.backend.modules.config.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
-import com.mkwang.backend.modules.config.dto.SystemConfigDto;
-import com.mkwang.backend.modules.config.dto.SystemConfigRequest;
+import com.mkwang.backend.modules.config.dto.response.SystemConfigResponse;
+import com.mkwang.backend.modules.config.dto.request.SystemConfigRequest;
 import com.mkwang.backend.modules.config.service.SystemConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,10 +39,10 @@ public class SystemConfigController {
      * Lấy toàn bộ danh sách system config (luôn từ DB — không cache).
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<SystemConfigDto>>> getAll() {
-        List<SystemConfigDto> configs = systemConfigService.getAll()
+    public ResponseEntity<ApiResponse<List<SystemConfigResponse>>> getAll() {
+        List<SystemConfigResponse> configs = systemConfigService.getAll()
                 .stream()
-                .map(SystemConfigDto::from)
+                .map(SystemConfigResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(configs));
     }
@@ -52,13 +52,13 @@ public class SystemConfigController {
      * Lấy 1 config theo key (qua Redis cache).
      */
     @GetMapping("/{key}")
-    public ResponseEntity<ApiResponse<SystemConfigDto>> getByKey(@PathVariable String key) {
+    public ResponseEntity<ApiResponse<SystemConfigResponse>> getByKey(@PathVariable String key) {
         String value = systemConfigService.getOrDefault(key, null);
         if (value == null) {
             return ResponseEntity.ok(ApiResponse.error("Config key không tồn tại: " + key));
         }
         // Build lightweight DTO from cached value (no DB hit)
-        SystemConfigDto dto = new SystemConfigDto(key, value, null, null, null);
+        SystemConfigResponse dto = new SystemConfigResponse(key, value, null, null, null);
         return ResponseEntity.ok(ApiResponse.success(dto));
     }
 
