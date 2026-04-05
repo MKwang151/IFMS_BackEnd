@@ -1,12 +1,12 @@
 package com.mkwang.backend.modules.accounting.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
-import com.mkwang.backend.modules.accounting.dto.CompanyFundDto;
-import com.mkwang.backend.modules.accounting.dto.ReconciliationReportDto;
-import com.mkwang.backend.modules.accounting.dto.SystemTopupRequest;
-import com.mkwang.backend.modules.accounting.dto.UpdateBankStatementRequest;
+import com.mkwang.backend.modules.accounting.dto.response.CompanyFundResponse;
+import com.mkwang.backend.modules.accounting.dto.response.ReconciliationReportResponse;
+import com.mkwang.backend.modules.accounting.dto.request.SystemTopupRequest;
+import com.mkwang.backend.modules.accounting.dto.request.UpdateBankStatementRequest;
 import com.mkwang.backend.modules.accounting.service.CompanyFundService;
-import com.mkwang.backend.modules.wallet.dto.TransactionDto;
+import com.mkwang.backend.modules.wallet.dto.response.TransactionResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,7 +25,7 @@ public class CompanyFundController {
      * Permission: COMPANY_FUND_VIEW (Accountant, CFO)
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<CompanyFundDto>> getCompanyFund() {
+    public ResponseEntity<ApiResponse<CompanyFundResponse>> getCompanyFund() {
         return ResponseEntity.ok(ApiResponse.success(companyFundService.getCompanyFund()));
     }
 
@@ -36,7 +36,7 @@ public class CompanyFundController {
      * Permission: COMPANY_FUND_TOPUP (Accountant, CFO)
      */
     @PostMapping("/topup")
-    public ResponseEntity<ApiResponse<TransactionDto>> topup(
+    public ResponseEntity<ApiResponse<TransactionResponse>> topup(
             @Valid @RequestBody SystemTopupRequest request) {
         return ResponseEntity.ok(ApiResponse.success(companyFundService.topup(request)));
     }
@@ -48,7 +48,7 @@ public class CompanyFundController {
      * Permission: COMPANY_FUND_TOPUP (Accountant, CFO)
      */
     @PutMapping("/bank-statement")
-    public ResponseEntity<ApiResponse<CompanyFundDto>> updateBankStatement(
+    public ResponseEntity<ApiResponse<CompanyFundResponse>> updateBankStatement(
             @Valid @RequestBody UpdateBankStatementRequest request) {
         return ResponseEntity.ok(ApiResponse.success(companyFundService.updateBankStatement(request)));
     }
@@ -59,7 +59,7 @@ public class CompanyFundController {
      * Permission: COMPANY_FUND_VIEW (Accountant, CFO)
      */
     @GetMapping("/reconciliation")
-    public ResponseEntity<ApiResponse<ReconciliationReportDto>> getReconciliationReport() {
+    public ResponseEntity<ApiResponse<ReconciliationReportResponse>> getReconciliationReport() {
         return ResponseEntity.ok(ApiResponse.success(companyFundService.getReconciliationReport()));
     }
 }

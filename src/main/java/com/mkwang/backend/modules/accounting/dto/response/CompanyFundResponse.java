@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.accounting.dto;
+package com.mkwang.backend.modules.accounting.dto.response;
 
 import lombok.Builder;
 import lombok.Data;
@@ -8,7 +8,7 @@ import java.time.LocalDate;
 
 @Data
 @Builder
-public class CompanyFundDto {
+public class CompanyFundResponse {
 
     private Long id;
     private String bankName;

@@ -1,29 +1,29 @@
 package com.mkwang.backend.modules.accounting.service;
 
-import com.mkwang.backend.modules.accounting.dto.CompanyFundDto;
-import com.mkwang.backend.modules.accounting.dto.ReconciliationReportDto;
-import com.mkwang.backend.modules.accounting.dto.SystemTopupRequest;
-import com.mkwang.backend.modules.accounting.dto.UpdateBankStatementRequest;
-import com.mkwang.backend.modules.wallet.dto.TransactionDto;
+import com.mkwang.backend.modules.accounting.dto.response.CompanyFundResponse;
+import com.mkwang.backend.modules.accounting.dto.response.ReconciliationReportResponse;
+import com.mkwang.backend.modules.accounting.dto.request.SystemTopupRequest;
+import com.mkwang.backend.modules.accounting.dto.request.UpdateBankStatementRequest;
+import com.mkwang.backend.modules.wallet.dto.response.TransactionResponse;
 
 public interface CompanyFundService {
 
     /**
      * Get company fund metadata and current wallet balance.
      */
-    CompanyFundDto getCompanyFund();
+    CompanyFundResponse getCompanyFund();
 
     /**
      * Record an external bank transfer that increases the company fund.
      * Calls WalletService.systemTopup() which also updates FLOAT_MAIN.
      */
-    TransactionDto topup(SystemTopupRequest request);
+    TransactionResponse topup(SystemTopupRequest request);
 
     /**
      * Update the bank statement figures for external reconciliation.
      * Records what the actual bank account shows (entered manually by Accountant).
      */
-    CompanyFundDto updateBankStatement(UpdateBankStatementRequest request);
+    CompanyFundResponse updateBankStatement(UpdateBankStatementRequest request);
 
     /**
      * Generate a full reconciliation report:
@@ -31,5 +31,5 @@ public interface CompanyFundService {
      * - Wallet breakdown by type
      * - Bank statement comparison (external reconciliation)
      */
-    ReconciliationReportDto getReconciliationReport();
+    ReconciliationReportResponse getReconciliationReport();
 }
