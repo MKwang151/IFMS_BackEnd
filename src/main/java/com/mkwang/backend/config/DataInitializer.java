@@ -411,14 +411,24 @@ public class DataInitializer implements CommandLineRunner {
                 // key, value, description
                 new Object[]{"PIN_MAX_RETRY",           "5",            "Số lần nhập sai PIN tối đa trước khi bị khóa"},
                 new Object[]{"PIN_LOCK_MINUTES",        "30",           "Thời gian khóa PIN (phút) sau khi vượt quá số lần thử"},
-                new Object[]{"WITHDRAW_AUTO_APPROVE_LIMIT", "5000000",  "Số tiền rút tối đa tự động duyệt (VND). Vượt ngưỡng sẽ chuyển Pending cho Accountant duyệt"},
                 new Object[]{"PAYROLL_ADVANCE_NETTING", "true",         "Tự động trừ nợ tạm ứng khi chi lương (true/false)"},
                 new Object[]{"SYSTEM_MAINTENANCE_MODE", "false",        "Chế độ bảo trì hệ thống – chặn toàn bộ giao dịch nếu true"},
                 new Object[]{"DEFAULT_CURRENCY",        "VND",          "Đơn vị tiền tệ mặc định của hệ thống"},
                 new Object[]{"MAX_ATTACHMENT_SIZE_MB",  "10",           "Dung lượng tối đa mỗi file đính kèm yêu cầu (MB)"},
                 new Object[]{"MAX_ATTACHMENT_COUNT",    "5",            "Số file đính kèm tối đa cho một yêu cầu"},
                 new Object[]{"JWT_REFRESH_EXPIRY_DAYS", "7",            "Thời hạn Refresh Token (ngày)"},
-                new Object[]{"NOTIFICATION_RETAIN_DAYS","90",           "Số ngày lưu giữ thông báo trước khi tự xóa"}
+                new Object[]{"NOTIFICATION_RETAIN_DAYS","90",           "Số ngày lưu giữ thông báo trước khi tự xóa"},
+
+                // ── Hạn mức rút tiền tự động duyệt theo role ─────────────────────────────
+                // amount <= limit → auto-execute qua MockBank ngay khi user tạo yêu cầu
+                // amount >  limit → tạo PENDING, chờ Accountant executeWithdraw()
+                // Đặt = 0        → luôn yêu cầu Accountant duyệt
+                new Object[]{"WITHDRAW_LIMIT_EMPLOYEE",   "5000000",   "Hạn mức rút tự động cho Nhân viên (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_TEAM_LEADER","20000000",  "Hạn mức rút tự động cho Team Leader (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_MANAGER",    "50000000",  "Hạn mức rút tự động cho Manager (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_ACCOUNTANT", "100000000", "Hạn mức rút tự động cho Accountant (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_CFO",        "500000000", "Hạn mức rút tự động cho CFO (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_ADMIN",      "0",         "Admin không được rút tự động (luôn cần Accountant duyệt)"}
         );
 
         for (Object[] row : configs) {
@@ -437,6 +447,7 @@ public class DataInitializer implements CommandLineRunner {
             }
         }
     }
+
 
     // =========================================================
     // 6. EXPENSE CATEGORIES (System defaults)
