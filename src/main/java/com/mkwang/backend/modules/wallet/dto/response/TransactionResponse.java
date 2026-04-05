@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.wallet.dto;
+package com.mkwang.backend.modules.wallet.dto.response;
 
 import com.mkwang.backend.modules.wallet.entity.ReferenceType;
 import com.mkwang.backend.modules.wallet.entity.TransactionStatus;
@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 
 @Data
 @Builder
-public class TransactionDto {
+public class TransactionResponse {
 
     private Long id;
     private String transactionCode;

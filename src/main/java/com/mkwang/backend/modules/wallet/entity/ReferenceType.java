@@ -10,5 +10,7 @@ public enum ReferenceType {
   PROJECT,          // Fund allocation to a project (Manager approves PROJECT_TOPUP)
   DEPARTMENT,       // Quota allocation to a department (CFO approves DEPARTMENT_TOPUP)
   ADVANCE_BALANCE,  // Cash return or payroll deduction settling an outstanding advance
-  SYSTEM            // System fund top-up or manual adjustment
+  SYSTEM,           // System fund top-up or manual adjustment
+  WITHDRAWAL,       // referenceId = WithdrawRequest.id
+  DEPOSIT           // referenceId = DepositLog.id (future)
 }

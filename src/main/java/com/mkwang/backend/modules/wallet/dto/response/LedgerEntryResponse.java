@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.wallet.dto;
+package com.mkwang.backend.modules.wallet.dto.response;
 
 import com.mkwang.backend.modules.wallet.entity.TransactionDirection;
 import lombok.Builder;
@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 @Data
 @Builder
-public class LedgerEntryDto {
+public class LedgerEntryResponse {
 
     private Long id;
     private String transactionCode;

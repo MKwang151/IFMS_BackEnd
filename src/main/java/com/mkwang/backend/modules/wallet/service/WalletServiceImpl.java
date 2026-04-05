@@ -4,9 +4,9 @@ import com.mkwang.backend.common.exception.BadRequestException;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeGenerator;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
-import com.mkwang.backend.modules.wallet.dto.LedgerEntryDto;
-import com.mkwang.backend.modules.wallet.dto.TransactionDto;
-import com.mkwang.backend.modules.wallet.dto.WalletDto;
+import com.mkwang.backend.modules.wallet.dto.response.LedgerEntryResponse;
+import com.mkwang.backend.modules.wallet.dto.response.TransactionResponse;
+import com.mkwang.backend.modules.wallet.dto.response.WalletResponse;
 import com.mkwang.backend.modules.wallet.entity.*;
 import com.mkwang.backend.modules.wallet.mapper.WalletMapper;
 import com.mkwang.backend.modules.wallet.repository.LedgerEntryRepository;
@@ -24,7 +24,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -199,7 +198,7 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional
-    public WalletDto createWallet(WalletOwnerType ownerType, Long ownerId) {
+    public WalletResponse createWallet(WalletOwnerType ownerType, Long ownerId) {
         if (walletRepository.existsByOwnerTypeAndOwnerId(ownerType, ownerId)) {
             throw new BadRequestException("Wallet already exists for " + ownerType + ":" + ownerId);
         }
@@ -217,7 +216,7 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional(readOnly = true)
-    public WalletDto getWallet(WalletOwnerType ownerType, Long ownerId) {
+    public WalletResponse getWallet(WalletOwnerType ownerType, Long ownerId) {
         Wallet wallet = walletRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet", "owner",
                         ownerType + ":" + ownerId));
@@ -226,9 +225,9 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<LedgerEntryDto> getLedgerHistory(WalletOwnerType ownerType, Long ownerId,
-                                                  LocalDate from, LocalDate to,
-                                                  Pageable pageable) {
+    public Page<LedgerEntryResponse> getLedgerHistory(WalletOwnerType ownerType, Long ownerId,
+                                                      LocalDate from, LocalDate to,
+                                                      Pageable pageable) {
         Wallet wallet = walletRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet", "owner",
                         ownerType + ":" + ownerId));
@@ -249,7 +248,7 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TransactionDto> getTransactionsByReference(ReferenceType refType, Long refId) {
+    public List<TransactionResponse> getTransactionsByReference(ReferenceType refType, Long refId) {
         return transactionRepository
                 .findByReferenceTypeAndReferenceIdOrderByCreatedAtDesc(refType, refId)
                 .stream()
@@ -316,7 +315,9 @@ public class WalletServiceImpl implements WalletService {
      * and must update FLOAT_MAIN to maintain the system-wide invariant.
      */
     private static final Set<TransactionType> BOUNDARY_TYPES = Set.of(
-            TransactionType.SYSTEM_TOPUP
+            TransactionType.SYSTEM_TOPUP,
+            TransactionType.DEPOSIT,
+            TransactionType.WITHDRAW
     );
 
     @Override
@@ -347,6 +348,63 @@ public class WalletServiceImpl implements WalletService {
         // FLOAT_MAIN: money entered the system → credit
         updateFloatMain(amount, true);
 
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Transaction deposit(Long userId, BigDecimal amount, String paymentRef, Long depositRefId) {
+        validateAmount(amount);
+        Wallet userWallet = getWalletForUpdate(WalletOwnerType.USER, userId);
+        userWallet.credit(amount);
+
+        Transaction txn = Transaction.builder()
+                .transactionCode(codeGenerator.generate(BusinessCodeType.TRANSACTION))
+                .amount(amount)
+                .type(TransactionType.DEPOSIT)
+                .status(TransactionStatus.SUCCESS)
+                .gatewayProvider(PaymentProvider.VNPAY)
+                .referenceType(ReferenceType.DEPOSIT)
+                .referenceId(depositRefId)
+                .paymentRef(paymentRef)
+                .description("Nap tien qua VNPay - " + paymentRef)
+                .build();
+
+        txn.getEntries().add(LedgerEntry.credit(txn, userWallet, amount, userWallet.getBalance()));
+        walletRepository.save(userWallet);
+        Transaction saved = transactionRepository.save(txn);
+
+        // Money enters system → FLOAT_MAIN +
+        updateFloatMain(amount, true);
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Transaction withdraw(Long userId, BigDecimal amount, String bankTxnId, Long withdrawReqId) {
+        validateAmount(amount);
+        Wallet userWallet = getWalletForUpdate(WalletOwnerType.USER, userId);
+        // Funds were locked at PENDING time — settle() = unlock + debit
+        userWallet.settle(amount);
+
+        Transaction txn = Transaction.builder()
+                .transactionCode(codeGenerator.generate(BusinessCodeType.TRANSACTION))
+                .amount(amount)
+                .type(TransactionType.WITHDRAW)
+                .status(TransactionStatus.SUCCESS)
+                .gatewayProvider(PaymentProvider.MOCK_BANK)
+                .referenceType(ReferenceType.WITHDRAWAL)
+                .referenceId(withdrawReqId)
+                .paymentRef(bankTxnId)
+                .description("Rut tien qua MockBank - " + bankTxnId)
+                .build();
+
+        txn.getEntries().add(LedgerEntry.debit(txn, userWallet, amount, userWallet.getBalance()));
+        walletRepository.save(userWallet);
+        Transaction saved = transactionRepository.save(txn);
+
+        // Money leaves system → FLOAT_MAIN -
+        updateFloatMain(amount, false);
         return saved;
     }
 

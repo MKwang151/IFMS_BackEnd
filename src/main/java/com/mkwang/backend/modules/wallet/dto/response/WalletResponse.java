@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.wallet.dto;
+package com.mkwang.backend.modules.wallet.dto.response;
 
 import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
 import lombok.Builder;
@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 
 @Data
 @Builder
-public class WalletDto {
+public class WalletResponse {
 
     private Long id;
     private WalletOwnerType ownerType;
