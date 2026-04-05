@@ -37,13 +37,32 @@ ALTER TABLE company_funds ALTER COLUMN total_balance SET DEFAULT 0;
 
 
 -- -----------------------------------------------------------------------------
--- 3. Rename SYSTEM_FUND → COMPANY_FUND in wallets (if any exist from prior seeds)
+-- 3. Update wallets.owner_type check constraint to include new enum values
+--    (Hibernate may have generated this constraint from the old enum at DDL time)
+-- -----------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'wallets_owner_type_check' AND conrelid = 'wallets'::regclass
+    ) THEN
+        ALTER TABLE wallets DROP CONSTRAINT wallets_owner_type_check;
+    END IF;
+END$$;
+
+ALTER TABLE wallets
+    ADD CONSTRAINT wallets_owner_type_check
+    CHECK (owner_type IN ('USER', 'DEPARTMENT', 'PROJECT', 'SYSTEM_FUND', 'COMPANY_FUND', 'FLOAT_MAIN'));
+
+
+-- -----------------------------------------------------------------------------
+-- 4. Rename SYSTEM_FUND → COMPANY_FUND in wallets (if any exist from prior seeds)
 -- -----------------------------------------------------------------------------
 UPDATE wallets SET owner_type = 'COMPANY_FUND' WHERE owner_type = 'SYSTEM_FUND';
 
 
 -- -----------------------------------------------------------------------------
--- 4. Seed Wallet(COMPANY_FUND, ownerId=1) — balance = current total_balance
+-- 5. Seed Wallet(COMPANY_FUND, ownerId=1) — balance = current total_balance
 -- -----------------------------------------------------------------------------
 INSERT INTO wallets (owner_type, owner_id, balance, locked_balance, created_at, updated_at)
 SELECT 'COMPANY_FUND', 1, COALESCE(cf.total_balance, 0), 0, NOW(), NOW()
@@ -53,7 +72,7 @@ ON CONFLICT ON CONSTRAINT uk_wallet_owner DO NOTHING;
 
 
 -- -----------------------------------------------------------------------------
--- 5. Bootstrap opening LedgerEntry for Wallet(COMPANY_FUND) so that
+-- 6. Bootstrap opening LedgerEntry for Wallet(COMPANY_FUND) so that
 --    the ledger is the source of truth from the start.
 --    Uses SYSTEM_ADJUSTMENT to record the migrated initial balance.
 -- -----------------------------------------------------------------------------
@@ -93,7 +112,7 @@ END$$;
 
 
 -- -----------------------------------------------------------------------------
--- 6. Seed Wallet(FLOAT_MAIN, ownerId=0) — balance = SUM of all non-FLOAT_MAIN wallets
+-- 7. Seed Wallet(FLOAT_MAIN, ownerId=0) — balance = SUM of all non-FLOAT_MAIN wallets
 --    ownerId = 0 is a sentinel value (no real entity owns FLOAT_MAIN)
 -- -----------------------------------------------------------------------------
 INSERT INTO wallets (owner_type, owner_id, balance, locked_balance, created_at, updated_at)

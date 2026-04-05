@@ -8,6 +8,7 @@ import com.mkwang.backend.modules.expense.entity.ExpenseCategory;
 import com.mkwang.backend.modules.expense.repository.ExpenseCategoryRepository;
 import com.mkwang.backend.modules.organization.entity.Department;
 import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
+import com.mkwang.backend.modules.profile.entity.UserProfile;
 import com.mkwang.backend.modules.user.entity.*;
 import com.mkwang.backend.modules.user.repository.RoleRepository;
 import com.mkwang.backend.modules.user.repository.UserRepository;
