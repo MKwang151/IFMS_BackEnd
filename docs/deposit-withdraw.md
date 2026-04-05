@@ -747,11 +747,11 @@ public class WithdrawRequest extends BaseEntity {
     @Column(name = "accountant_note", length = 500)
     private String accountantNote;
 
-    @Column(name = "processed_by")
-    private Long processedBy;
+    @Column(name = "executed_by")
+    private Long executedBy;
 
-    @Column(name = "processed_at")
-    private LocalDateTime processedAt;
+    @Column(name = "executed_at")
+    private LocalDateTime executedAt;
 
     @Column(name = "transaction_id")
     private Long transactionId;                     // FK → transactions.id
@@ -765,8 +765,7 @@ public class WithdrawRequest extends BaseEntity {
 
 ```java
 public enum WithdrawStatus {
-    PENDING,       // Vừa tạo — lockedBalance += amount
-    PROCESSING,    // Accountant đang xử lý
+    PENDING,       // Vừa tạo (vượt hạn mức) — lockedBalance += amount
     COMPLETED,     // MockBank SUCCESS — lockedBalance -= amount, balance -= amount
     FAILED,        // MockBank FAILED — lockedBalance -= amount (unlock, không debit)
     REJECTED,      // Accountant từ chối — lockedBalance -= amount
@@ -782,12 +781,18 @@ public enum WithdrawStatus {
 public WithdrawRequestDto executeWithdraw(Long accountantId, Long requestId, String note) {
     WithdrawRequest req = findById(requestId);
 
-    if (req.getStatus() != WithdrawStatus.PENDING
-            && req.getStatus() != WithdrawStatus.PROCESSING) {
-        throw new BadRequestException("Chỉ có thể execute ở trạng thái PENDING/PROCESSING");
+    if (req.getStatus() != WithdrawStatus.PENDING) {
+        throw new BadRequestException("Chỉ có thể execute ở trạng thái PENDING");
     }
 
-    req.setStatus(WithdrawStatus.PROCESSING);
+    req.setAccountantNote(note);
+    req = doExecuteWithdraw(req, accountantId);
+    return withdrawMapper.toDto(req);
+}
+
+private WithdrawRequest doExecuteWithdraw(WithdrawRequest req, Long executedBy) {
+    req.setExecutedBy(executedBy);
+    req.setExecutedAt(LocalDateTime.now());
 
     // Gọi MockBank — lấy thông tin từ snapshot trong WithdrawRequest
     BankTransferResult result = bankingService.transfer(
@@ -798,10 +803,6 @@ public WithdrawRequestDto executeWithdraw(Long accountantId, Long requestId, Str
         req.getWithdrawCode(),      // idempotency key
         "Chuyen khoan thu nhap - " + req.getWithdrawCode()
     );
-
-    req.setProcessedBy(accountantId);
-    req.setProcessedAt(LocalDateTime.now());
-    req.setAccountantNote(note);
 
     if (result.isSuccess() || result.isDuplicate()) {
         // isDuplicate: đã gọi trước nhưng IFMS chưa nhận response → coi là thành công
@@ -819,8 +820,9 @@ public WithdrawRequestDto executeWithdraw(Long accountantId, Long requestId, Str
         req.setFailureReason("[" + result.responseCode() + "] " + result.responseMessage());
     }
 
-    return withdrawMapper.toDto(withdrawRequestRepository.save(req));
+    return withdrawRequestRepository.save(req);
 }
+
 ```
 
 ### 3.10 WithdrawController endpoints
@@ -830,6 +832,7 @@ POST   /api/v1/withdrawals
        Body: { amount, userNote? }           ← bank info lấy tự động từ UserProfile
        Auth: WALLET_WITHDRAW
        → Tự động đọc bankAccountNum, bankName, bankAccountOwner từ profile user
+       → Tự động execute nếu amount <= limit của role
 
 DELETE /api/v1/withdrawals/{id}
        Auth: WALLET_WITHDRAW (chỉ owner của request)
@@ -839,9 +842,6 @@ GET    /api/v1/withdrawals/my?page=0&size=10
        Auth: WALLET_WITHDRAW
 
 GET    /api/v1/withdrawals?status=PENDING&page=0&size=20
-       Auth: TRANSACTION_APPROVE_WITHDRAW
-
-PUT    /api/v1/withdrawals/{id}/process
        Auth: TRANSACTION_APPROVE_WITHDRAW
 
 PUT    /api/v1/withdrawals/{id}/execute
@@ -899,8 +899,8 @@ CREATE TABLE IF NOT EXISTS withdrawal_requests
     status               VARCHAR(20)    NOT NULL,
     bank_transaction_id  VARCHAR(50),
     accountant_note      VARCHAR(500),
-    processed_by         BIGINT,
-    processed_at         TIMESTAMP WITHOUT TIME ZONE,
+    executed_by          BIGINT,
+    executed_at          TIMESTAMP WITHOUT TIME ZONE,
     transaction_id       BIGINT,
     failure_reason       VARCHAR(500),
     created_at           TIMESTAMP WITHOUT TIME ZONE NOT NULL,
@@ -910,7 +910,7 @@ CREATE TABLE IF NOT EXISTS withdrawal_requests
     CONSTRAINT pk_withdrawal_requests PRIMARY KEY (id),
     CONSTRAINT uk_wr_withdraw_code UNIQUE (withdraw_code),
     CONSTRAINT wr_status_check CHECK (status IN (
-        'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'REJECTED', 'CANCELLED'
+        'PENDING', 'COMPLETED', 'FAILED', 'REJECTED', 'CANCELLED'
     ))
 );
 
