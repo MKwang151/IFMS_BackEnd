@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.wallet.dto;
+package com.mkwang.backend.modules.wallet.dto.request;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;

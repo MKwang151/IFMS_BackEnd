@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.wallet.dto;
+package com.mkwang.backend.modules.wallet.dto.request;
 
 /**
  * Request body for PUT /api/v1/withdrawals/{id}/execute
