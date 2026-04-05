@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.profile.service;
 
+import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
 import com.mkwang.backend.modules.profile.entity.UserSecuritySettings;
 import com.mkwang.backend.modules.profile.repository.UserProfileRepository;
@@ -36,5 +37,12 @@ public class ProfileServiceImpl implements ProfileService {
                 .orElse(UserSecuritySettings.builder().user(user).build());
         settings.setTransactionPin(encodedPin);
         return userSecuritySettingsRepository.save(settings);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserProfile getProfileByUserId(Long userId) {
+        return userProfileRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("UserProfile", "userId", userId));
     }
 }

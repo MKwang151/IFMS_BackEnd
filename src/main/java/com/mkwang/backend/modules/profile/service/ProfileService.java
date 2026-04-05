@@ -26,4 +26,15 @@ public interface ProfileService {
      * @return UserSecuritySettings đã được lưu
      */
     UserSecuritySettings createSecuritySettings(User user, String encodedPin);
+
+    /**
+     * Lấy UserProfile theo userId.
+     * Dùng để đọc thông tin ngân hàng (bankAccountNum, bankAccountOwner, bankName)
+     * khi user tạo WithdrawRequest.
+     *
+     * @param userId ID of the user
+     * @return UserProfile
+     * @throws com.mkwang.backend.common.exception.ResourceNotFoundException nếu không tồn tại
+     */
+    UserProfile getProfileByUserId(Long userId);
 }
