@@ -1,8 +1,8 @@
 package com.mkwang.backend.modules.wallet.service;
 
-import com.mkwang.backend.modules.wallet.dto.LedgerEntryDto;
-import com.mkwang.backend.modules.wallet.dto.TransactionDto;
-import com.mkwang.backend.modules.wallet.dto.WalletDto;
+import com.mkwang.backend.modules.wallet.dto.response.LedgerEntryResponse;
+import com.mkwang.backend.modules.wallet.dto.response.TransactionResponse;
+import com.mkwang.backend.modules.wallet.dto.response.WalletResponse;
 import com.mkwang.backend.modules.wallet.entity.ReferenceType;
 import com.mkwang.backend.modules.wallet.entity.Transaction;
 import com.mkwang.backend.modules.wallet.entity.TransactionType;
@@ -30,7 +30,7 @@ import java.util.List;
  *   - getTransactionsByReference: All transactions linked to a business entity
  *
  * Lifecycle:
- *   - createWallet:       Create wallet for new User/Department/Project/SystemFund
+ *   - createWallet:       Create wallet for new User/Department/Project/CompanyFund
  */
 public interface WalletService {
 
@@ -91,24 +91,70 @@ public interface WalletService {
     /**
      * Create a new wallet for a given owner. Balance starts at 0.
      */
-    WalletDto createWallet(WalletOwnerType ownerType, Long ownerId);
+    WalletResponse createWallet(WalletOwnerType ownerType, Long ownerId);
 
     // ── Read Operations ──────────────────────────────────────────────
 
     /**
      * Get wallet balance snapshot.
      */
-    WalletDto getWallet(WalletOwnerType ownerType, Long ownerId);
+    WalletResponse getWallet(WalletOwnerType ownerType, Long ownerId);
 
     /**
      * Paginated ledger history (sao kê) for a wallet, optionally filtered by date range.
      */
-    Page<LedgerEntryDto> getLedgerHistory(WalletOwnerType ownerType, Long ownerId,
-                                          LocalDate from, LocalDate to,
-                                          Pageable pageable);
+    Page<LedgerEntryResponse> getLedgerHistory(WalletOwnerType ownerType, Long ownerId,
+                                               LocalDate from, LocalDate to,
+                                               Pageable pageable);
 
     /**
      * All transactions linked to a business entity (Request, Payslip, etc.)
      */
-    List<TransactionDto> getTransactionsByReference(ReferenceType refType, Long refId);
+    List<TransactionResponse> getTransactionsByReference(ReferenceType refType, Long refId);
+
+    // ── Boundary Operations ──────────────────────────────────────────
+
+    /**
+     * Top up the company fund from an external bank transfer.
+     * Single-sided: External Bank → CompanyFund wallet (no source wallet in IFMS).
+     * Creates 1 Transaction(SYSTEM_TOPUP) + 1 LedgerEntry(CREDIT, CompanyFund) + updates FLOAT_MAIN.
+     */
+    Transaction systemTopup(BigDecimal amount, String paymentRef, String description);
+
+    /**
+     * Boundary CREDIT — money arrives into USER wallet from VNPay payment gateway.
+     * Single-sided: External (VNPay) → USER wallet.
+     * Creates 1 Transaction(DEPOSIT) + 1 LedgerEntry(CREDIT, USER wallet) + FLOAT_MAIN +=.
+     *
+     * @param userId       The user receiving the deposit
+     * @param amount       Amount deposited (must be positive)
+     * @param paymentRef   VNPay transaction reference (vnp_TransactionNo)
+     * @param depositRefId Future: DepositLog.id for polymorphic reference
+     */
+    Transaction deposit(Long userId, BigDecimal amount, String paymentRef, Long depositRefId);
+
+    /**
+     * Boundary DEBIT — money leaves USER wallet to an external bank account via MockBank.
+     * Settles previously locked funds: lockedBalance -= amount, balance -= amount.
+     * Creates 1 Transaction(WITHDRAW) + 1 LedgerEntry(DEBIT, USER wallet) + FLOAT_MAIN -=.
+     *
+     * @param userId         The user withdrawing
+     * @param amount         Amount to withdraw (funds must have been locked earlier)
+     * @param bankTxnId      MockBank transactionId (e.g. "VCB20260405103000000001")
+     * @param withdrawReqId  WithdrawRequest.id for polymorphic reference
+     */
+    Transaction withdraw(Long userId, BigDecimal amount, String bankTxnId, Long withdrawReqId);
+
+    // ── Reconciliation Reads ─────────────────────────────────────────
+
+    /**
+     * Sum of all wallet balances for a given owner type.
+     */
+    BigDecimal sumBalancesByType(WalletOwnerType ownerType);
+
+    /**
+     * Sum of all wallet balances excluding FLOAT_MAIN.
+     * Should equal FLOAT_MAIN.balance — any difference is a discrepancy.
+     */
+    BigDecimal sumAllBalancesExceptFloatMain();
 }

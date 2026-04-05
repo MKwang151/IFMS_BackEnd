@@ -1,13 +1,14 @@
 package com.mkwang.backend.config;
 
-import com.mkwang.backend.modules.accounting.entity.SystemFund;
-import com.mkwang.backend.modules.accounting.repository.SystemFundRepository;
+import com.mkwang.backend.modules.accounting.entity.CompanyFund;
+import com.mkwang.backend.modules.accounting.repository.CompanyFundRepository;
 import com.mkwang.backend.modules.config.entity.SystemConfig;
 import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
 import com.mkwang.backend.modules.expense.entity.ExpenseCategory;
 import com.mkwang.backend.modules.expense.repository.ExpenseCategoryRepository;
 import com.mkwang.backend.modules.organization.entity.Department;
 import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
+import com.mkwang.backend.modules.profile.entity.UserProfile;
 import com.mkwang.backend.modules.user.entity.*;
 import com.mkwang.backend.modules.user.repository.RoleRepository;
 import com.mkwang.backend.modules.user.repository.UserRepository;
@@ -37,7 +38,7 @@ import java.util.Set;
  *   4. Update Department managers
  *   5. UserProfiles
  *   6. Wallets
- *   7. SystemFund
+ *   7. CompanyFund + Wallets (COMPANY_FUND + FLOAT_MAIN)
  *   8. SystemConfig
  *   9. ExpenseCategories (system defaults)
  */
@@ -50,7 +51,7 @@ public class DataInitializer implements CommandLineRunner {
     private final UserRepository            userRepository;
     private final DepartmentRepository      departmentRepository;
     private final WalletRepository          walletRepository;
-    private final SystemFundRepository      systemFundRepository;
+    private final CompanyFundRepository     companyFundRepository;
     private final SystemConfigRepository    systemConfigRepository;
     private final ExpenseCategoryRepository expenseCategoryRepository;
     private final PasswordEncoder           passwordEncoder;
@@ -71,7 +72,7 @@ public class DataInitializer implements CommandLineRunner {
         initRoles();
         initDepartments();
         initUsers();
-        initSystemFund();
+        initCompanyFund();
         initSystemConfigs();
         initExpenseCategories();
 
@@ -174,8 +175,8 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.TRANSACTION_APPROVE_WITHDRAW,
                 Permission.PAYROLL_MANAGE,
                 Permission.PAYROLL_EXECUTE,
-                Permission.SYSTEM_FUND_VIEW,
-                Permission.SYSTEM_FUND_TOPUP
+                Permission.COMPANY_FUND_VIEW,
+                Permission.COMPANY_FUND_TOPUP
         ));
 
         // CFO – Giám đốc Tài chính (financial governance: approve Flow 3, global dashboard)
@@ -199,8 +200,8 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.REQUEST_APPROVE_DEPT_TOPUP,
                 Permission.REQUEST_REJECT,
                 Permission.TRANSACTION_APPROVE_WITHDRAW,
-                Permission.SYSTEM_FUND_VIEW,
-                Permission.SYSTEM_FUND_TOPUP,
+                Permission.COMPANY_FUND_VIEW,
+                Permission.COMPANY_FUND_TOPUP,
                 Permission.DEPT_BUDGET_ALLOCATE,
                 Permission.DASHBOARD_VIEW_GLOBAL
         ));
@@ -353,20 +354,50 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     // =========================================================
-    // 4. SYSTEM FUND
+    // 4. COMPANY FUND + WALLETS (COMPANY_FUND + FLOAT_MAIN)
     // =========================================================
-    private void initSystemFund() {
-        log.info("── [4/5] Seeding SystemFund ...");
-        if (systemFundRepository.count() == 0) {
-            SystemFund fund = SystemFund.builder()
-                    .totalBalance(INITIAL_FUND)
+    private void initCompanyFund() {
+        log.info("── [4/5] Seeding CompanyFund + system wallets ...");
+
+        // 4a. CompanyFund metadata record (singleton id=1)
+        if (companyFundRepository.count() == 0) {
+            CompanyFund fund = CompanyFund.builder()
                     .bankName("Vietcombank")
                     .bankAccount("0011004999999")
+                    .externalBankBalance(INITIAL_FUND)
                     .build();
-            systemFundRepository.save(fund);
-            log.info("   💰 SystemFund created: {} VND", INITIAL_FUND);
+            companyFundRepository.save(fund);
+            log.info("   💰 CompanyFund metadata created");
         } else {
-            log.info("   💰 SystemFund already exists, skipping.");
+            log.info("   💰 CompanyFund already exists, skipping.");
+        }
+
+        // 4b. Wallet(COMPANY_FUND, ownerId=1) — company's operational cash
+        if (!walletRepository.existsByOwnerTypeAndOwnerId(WalletOwnerType.COMPANY_FUND, 1L)) {
+            walletRepository.save(Wallet.builder()
+                    .ownerType(WalletOwnerType.COMPANY_FUND)
+                    .ownerId(1L)
+                    .balance(INITIAL_FUND)
+                    .lockedBalance(BigDecimal.ZERO)
+                    .build());
+            log.info("   💰 Wallet(COMPANY_FUND) created: {} VND", INITIAL_FUND);
+        } else {
+            log.info("   💰 Wallet(COMPANY_FUND) already exists, skipping.");
+        }
+
+        // 4c. Wallet(FLOAT_MAIN, ownerId=0) — system-wide control wallet
+        //     balance = SUM of all non-FLOAT_MAIN wallets at this point
+        if (!walletRepository.existsByOwnerTypeAndOwnerId(WalletOwnerType.FLOAT_MAIN, 0L)) {
+            BigDecimal floatBalance = walletRepository.sumAllBalancesExcept(WalletOwnerType.FLOAT_MAIN);
+            walletRepository.save(Wallet.builder()
+                    .ownerType(WalletOwnerType.FLOAT_MAIN)
+                    .ownerId(0L)
+                    .balance(floatBalance)
+                    .lockedBalance(BigDecimal.ZERO)
+                    .build());
+            log.info("   🔍 Wallet(FLOAT_MAIN) created: {} VND", floatBalance);
+        } else {
+            log.info("   🔍 Wallet(FLOAT_MAIN) already exists, skipping.");
         }
     }
 
@@ -380,14 +411,24 @@ public class DataInitializer implements CommandLineRunner {
                 // key, value, description
                 new Object[]{"PIN_MAX_RETRY",           "5",            "Số lần nhập sai PIN tối đa trước khi bị khóa"},
                 new Object[]{"PIN_LOCK_MINUTES",        "30",           "Thời gian khóa PIN (phút) sau khi vượt quá số lần thử"},
-                new Object[]{"WITHDRAW_AUTO_APPROVE_LIMIT", "5000000",  "Số tiền rút tối đa tự động duyệt (VND). Vượt ngưỡng sẽ chuyển Pending cho Accountant duyệt"},
                 new Object[]{"PAYROLL_ADVANCE_NETTING", "true",         "Tự động trừ nợ tạm ứng khi chi lương (true/false)"},
                 new Object[]{"SYSTEM_MAINTENANCE_MODE", "false",        "Chế độ bảo trì hệ thống – chặn toàn bộ giao dịch nếu true"},
                 new Object[]{"DEFAULT_CURRENCY",        "VND",          "Đơn vị tiền tệ mặc định của hệ thống"},
                 new Object[]{"MAX_ATTACHMENT_SIZE_MB",  "10",           "Dung lượng tối đa mỗi file đính kèm yêu cầu (MB)"},
                 new Object[]{"MAX_ATTACHMENT_COUNT",    "5",            "Số file đính kèm tối đa cho một yêu cầu"},
                 new Object[]{"JWT_REFRESH_EXPIRY_DAYS", "7",            "Thời hạn Refresh Token (ngày)"},
-                new Object[]{"NOTIFICATION_RETAIN_DAYS","90",           "Số ngày lưu giữ thông báo trước khi tự xóa"}
+                new Object[]{"NOTIFICATION_RETAIN_DAYS","90",           "Số ngày lưu giữ thông báo trước khi tự xóa"},
+
+                // ── Hạn mức rút tiền tự động duyệt theo role ─────────────────────────────
+                // amount <= limit → auto-execute qua MockBank ngay khi user tạo yêu cầu
+                // amount >  limit → tạo PENDING, chờ Accountant executeWithdraw()
+                // Đặt = 0        → luôn yêu cầu Accountant duyệt
+                new Object[]{"WITHDRAW_LIMIT_EMPLOYEE",   "5000000",   "Hạn mức rút tự động cho Nhân viên (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_TEAM_LEADER","20000000",  "Hạn mức rút tự động cho Team Leader (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_MANAGER",    "50000000",  "Hạn mức rút tự động cho Manager (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_ACCOUNTANT", "100000000", "Hạn mức rút tự động cho Accountant (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_CFO",        "500000000", "Hạn mức rút tự động cho CFO (VNĐ)"},
+                new Object[]{"WITHDRAW_LIMIT_ADMIN",      "0",         "Admin không được rút tự động (luôn cần Accountant duyệt)"}
         );
 
         for (Object[] row : configs) {
@@ -406,6 +447,7 @@ public class DataInitializer implements CommandLineRunner {
             }
         }
     }
+
 
     // =========================================================
     // 6. EXPENSE CATEGORIES (System defaults)

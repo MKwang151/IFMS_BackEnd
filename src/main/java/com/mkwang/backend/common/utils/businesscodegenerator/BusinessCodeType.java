@@ -18,6 +18,7 @@ import java.time.LocalDate;
  * | TRANSACTION | TXN-{8 hex}                   | TXN-8829145A        |
  * | PERIOD      | PR-{YYYY}-{MM}                | PR-2026-04          |
  * | PAYSLIP     | PSL-{EMP_CODE}-{MMYY}         | PSL-MK001-0426      |
+ * | WITHDRAWAL  | WD-{YYYY}-{SEQ:06d}           | WD-2026-000012      |
  * </pre>
  */
 public enum BusinessCodeType {
@@ -117,6 +118,14 @@ public enum BusinessCodeType {
             return "PSL-" + empCode + "-"
                     + CodeFormatUtils.padLeft(month, 2)
                     + CodeFormatUtils.padLeft(year % 100, 2);
+        }
+    },
+
+    WITHDRAWAL("seq_withdraw_code") {
+        /** Không cần params — format WD-{YYYY}-{SEQ:06d} */
+        @Override
+        public String format(long seq, CodeFormatUtils utils, String... params) {
+            return "WD-" + LocalDate.now().getYear() + "-" + CodeFormatUtils.padLeft(seq, 6);
         }
     };
 

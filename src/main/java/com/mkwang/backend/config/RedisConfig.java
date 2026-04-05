@@ -52,6 +52,10 @@ public class RedisConfig {
         @Value("${spring.cache.redis.time-to-live:3600000}")
         private long defaultCacheTtlMs;
 
+        /** TTL riêng cho system_configs — config thay đổi ít, cache 24h giảm DB roundtrip */
+        @Value("${app.cache.system-config-ttl-ms:86400000}")
+        private long systemConfigCacheTtlMs;
+
         /**
          * RedisTemplate<String, Object> for manual object caching (e.g., OTP DTOs, token versions).
          * Values are serialized as JSON with type metadata.
@@ -128,6 +132,10 @@ public class RedisConfig {
 
                 return RedisCacheManager.builder(connectionFactory)
                                 .cacheDefaults(cacheConfig)
+                                // system_configs: TTL 24h — data thay đổi ít, dùng evict() khi update
+                                .withCacheConfiguration(
+                                        "system_configs",
+                                        cacheConfig.entryTtl(Duration.ofMillis(systemConfigCacheTtlMs)))
                                 .transactionAware() // Sync cache ops with DB @Transactional boundaries
                                 .build();
         }
