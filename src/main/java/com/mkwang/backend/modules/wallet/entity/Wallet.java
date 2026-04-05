@@ -8,7 +8,7 @@ import lombok.*;
 import java.math.BigDecimal;
 
 /**
- * Wallet entity — Unified wallet for all financial actors (User, Department, Project, SystemFund).
+ * Wallet entity — Unified wallet for all financial actors (User, Department, Project, CompanyFund).
  *
  * Balance model (industry-standard 2-field approach):
  *   balance        = total gross balance

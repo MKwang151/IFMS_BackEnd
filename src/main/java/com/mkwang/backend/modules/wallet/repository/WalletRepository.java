@@ -30,4 +30,18 @@ public interface WalletRepository extends JpaRepository<Wallet, Long> {
       @Param("ownerType") WalletOwnerType ownerType,
       @Param("ownerId") Long ownerId
   );
+
+  /**
+   * Sum of all wallet balances for a given owner type.
+   * Used for reconciliation breakdown (total dept wallets, total project wallets, etc.)
+   */
+  @Query("SELECT COALESCE(SUM(w.balance), 0) FROM Wallet w WHERE w.ownerType = :ownerType")
+  java.math.BigDecimal sumBalancesByType(@Param("ownerType") WalletOwnerType ownerType);
+
+  /**
+   * Sum of all wallet balances EXCLUDING a specific owner type.
+   * Used to compute the expected FLOAT_MAIN balance.
+   */
+  @Query("SELECT COALESCE(SUM(w.balance), 0) FROM Wallet w WHERE w.ownerType != :excludeType")
+  java.math.BigDecimal sumAllBalancesExcept(@Param("excludeType") WalletOwnerType excludeType);
 }

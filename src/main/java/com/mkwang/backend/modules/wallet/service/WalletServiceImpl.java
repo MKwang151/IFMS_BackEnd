@@ -24,6 +24,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -118,6 +120,45 @@ public class WalletServiceImpl implements WalletService {
         }
 
         List<LedgerEntry> originalEntries = ledgerEntryRepository.findByTransactionId(originalTransactionId);
+        BigDecimal amount = original.getAmount();
+        String desc = "REVERSAL of " + original.getTransactionCode()
+                + (reason != null ? " - " + reason : "");
+
+        // ── Boundary transactions (single-entry: no counterpart wallet in IFMS) ──
+        if (BOUNDARY_TYPES.contains(original.getType())) {
+            if (originalEntries.size() != 1) {
+                throw new BadRequestException("Boundary transaction should have exactly 1 ledger entry");
+            }
+            LedgerEntry entry = originalEntries.get(0);
+            Wallet wallet = getWalletForUpdate(
+                    entry.getWallet().getOwnerType(), entry.getWallet().getOwnerId());
+
+            // Reverse the direction: CREDIT → DEBIT, DEBIT → CREDIT
+            if (entry.getDirection() == TransactionDirection.CREDIT) {
+                wallet.debit(amount);
+            } else {
+                wallet.credit(amount);
+            }
+
+            Transaction reversalTxn = buildTransaction(amount, TransactionType.REVERSAL,
+                    original.getReferenceType(), original.getReferenceId(), desc);
+
+            if (entry.getDirection() == TransactionDirection.CREDIT) {
+                reversalTxn.getEntries().add(LedgerEntry.debit(reversalTxn, wallet, amount, wallet.getBalance()));
+            } else {
+                reversalTxn.getEntries().add(LedgerEntry.credit(reversalTxn, wallet, amount, wallet.getBalance()));
+            }
+
+            walletRepository.save(wallet);
+            Transaction saved = transactionRepository.save(reversalTxn);
+
+            // FLOAT_MAIN: reverse the boundary effect
+            boolean wasInflow = entry.getDirection() == TransactionDirection.CREDIT;
+            updateFloatMain(amount, !wasInflow);
+            return saved;
+        }
+
+        // ── Standard double-entry transactions ───────────────────────────────────
         if (originalEntries.size() != 2) {
             throw new BadRequestException("Transaction does not have exactly 2 ledger entries");
         }
@@ -131,8 +172,6 @@ public class WalletServiceImpl implements WalletService {
                 .findFirst()
                 .orElseThrow(() -> new BadRequestException("Original transaction missing CREDIT entry"));
 
-        BigDecimal amount = original.getAmount();
-
         LockedWalletPair pair = lockPairDeterministically(
                 debitEntry.getWallet().getOwnerType(), debitEntry.getWallet().getOwnerId(),
                 creditEntry.getWallet().getOwnerType(), creditEntry.getWallet().getOwnerId()
@@ -142,9 +181,6 @@ public class WalletServiceImpl implements WalletService {
 
         originalDest.debit(amount);
         originalSource.credit(amount);
-
-        String desc = "REVERSAL of " + original.getTransactionCode()
-                + (reason != null ? " - " + reason : "");
 
         Transaction reversalTxn = buildTransaction(amount, TransactionType.REVERSAL,
                 original.getReferenceType(), original.getReferenceId(), desc);
@@ -268,5 +304,87 @@ public class WalletServiceImpl implements WalletService {
         Wallet source = sourceKey.equals(first) ? firstLocked : secondLocked;
         Wallet dest = sourceKey.equals(first) ? secondLocked : firstLocked;
         return new LockedWalletPair(source, dest);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  BOUNDARY OPERATIONS (External ↔ IFMS)
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Transaction types that cross the system boundary (external ↔ IFMS).
+     * These create only 1 LedgerEntry (no counterpart wallet inside IFMS)
+     * and must update FLOAT_MAIN to maintain the system-wide invariant.
+     */
+    private static final Set<TransactionType> BOUNDARY_TYPES = Set.of(
+            TransactionType.SYSTEM_TOPUP
+    );
+
+    @Override
+    @Transactional
+    public Transaction systemTopup(BigDecimal amount, String paymentRef, String description) {
+        validateAmount(amount);
+
+        Wallet companyFund = getWalletForUpdate(WalletOwnerType.COMPANY_FUND, 1L);
+        companyFund.credit(amount);
+
+        Transaction txn = Transaction.builder()
+                .transactionCode(codeGenerator.generate(BusinessCodeType.TRANSACTION))
+                .amount(amount)
+                .type(TransactionType.SYSTEM_TOPUP)
+                .status(TransactionStatus.SUCCESS)
+                .gatewayProvider(PaymentProvider.INTERNAL)
+                .referenceType(ReferenceType.SYSTEM)
+                .referenceId(1L)
+                .paymentRef(paymentRef)
+                .description(description)
+                .build();
+
+        txn.getEntries().add(LedgerEntry.credit(txn, companyFund, amount, companyFund.getBalance()));
+
+        walletRepository.save(companyFund);
+        Transaction saved = transactionRepository.save(txn);
+
+        // FLOAT_MAIN: money entered the system → credit
+        updateFloatMain(amount, true);
+
+        return saved;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  RECONCILIATION READS
+    // ══════════════════════════════════════════════════════════════════
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal sumBalancesByType(WalletOwnerType ownerType) {
+        return walletRepository.sumBalancesByType(ownerType);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal sumAllBalancesExceptFloatMain() {
+        return walletRepository.sumAllBalancesExcept(WalletOwnerType.FLOAT_MAIN);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  FLOAT_MAIN MAINTENANCE (private — never called outside WalletService)
+    // ══════════════════════════════════════════════════════════════════
+
+    /**
+     * Update the FLOAT_MAIN control wallet when money crosses the system boundary.
+     * FLOAT_MAIN does NOT get a LedgerEntry — it is a balance-only control wallet.
+     *
+     * @param amount   always positive
+     * @param isCredit true when money enters the system (SYSTEM_TOPUP, DEPOSIT),
+     *                 false when money exits (WITHDRAW)
+     */
+    private void updateFloatMain(BigDecimal amount, boolean isCredit) {
+        Wallet floatMain = getWalletForUpdate(WalletOwnerType.FLOAT_MAIN, 0L);
+        if (isCredit) {
+            floatMain.credit(amount);
+        } else {
+            floatMain.debit(amount);
+        }
+        walletRepository.save(floatMain);
     }
 }

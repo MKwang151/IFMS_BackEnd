@@ -99,10 +99,10 @@ public enum Permission {
   PAYROLL_EXECUTE("Chốt & chi lương hàng loạt (kèm auto-netting trừ nợ)"),
 
   // ================================================================
-  // 8. SYSTEM FUND (Accountant daily ops / CFO oversight)
+  // 8. COMPANY FUND (Accountant daily ops / CFO oversight)
   // ================================================================
-  SYSTEM_FUND_VIEW("Xem số dư quỹ hệ thống"),
-  SYSTEM_FUND_TOPUP("Nạp tiền vào quỹ hệ thống từ ngân hàng"),
+  COMPANY_FUND_VIEW("Xem số dư quỹ công ty và báo cáo đối soát"),
+  COMPANY_FUND_TOPUP("Nạp tiền vào quỹ công ty từ ngân hàng (SYSTEM_TOPUP)"),
 
   // ================================================================
   // 9. ORG STRUCTURE & CONFIG

@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Core wallet service — handles all fund operations in the 4-tier wallet system.
@@ -30,7 +31,7 @@ import java.util.List;
  *   - getTransactionsByReference: All transactions linked to a business entity
  *
  * Lifecycle:
- *   - createWallet:       Create wallet for new User/Department/Project/SystemFund
+ *   - createWallet:       Create wallet for new User/Department/Project/CompanyFund
  */
 public interface WalletService {
 
@@ -111,4 +112,26 @@ public interface WalletService {
      * All transactions linked to a business entity (Request, Payslip, etc.)
      */
     List<TransactionDto> getTransactionsByReference(ReferenceType refType, Long refId);
+
+    // ── Boundary Operations ──────────────────────────────────────────
+
+    /**
+     * Top up the company fund from an external bank transfer.
+     * Single-sided: External Bank → CompanyFund wallet (no source wallet in IFMS).
+     * Creates 1 Transaction(SYSTEM_TOPUP) + 1 LedgerEntry(CREDIT, CompanyFund) + updates FLOAT_MAIN.
+     */
+    Transaction systemTopup(BigDecimal amount, String paymentRef, String description);
+
+    // ── Reconciliation Reads ─────────────────────────────────────────
+
+    /**
+     * Sum of all wallet balances for a given owner type.
+     */
+    BigDecimal sumBalancesByType(WalletOwnerType ownerType);
+
+    /**
+     * Sum of all wallet balances excluding FLOAT_MAIN.
+     * Should equal FLOAT_MAIN.balance — any difference is a discrepancy.
+     */
+    BigDecimal sumAllBalancesExceptFloatMain();
 }

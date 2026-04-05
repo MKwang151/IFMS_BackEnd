@@ -1,7 +1,7 @@
 package com.mkwang.backend.config;
 
-import com.mkwang.backend.modules.accounting.entity.SystemFund;
-import com.mkwang.backend.modules.accounting.repository.SystemFundRepository;
+import com.mkwang.backend.modules.accounting.entity.CompanyFund;
+import com.mkwang.backend.modules.accounting.repository.CompanyFundRepository;
 import com.mkwang.backend.modules.config.entity.SystemConfig;
 import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
 import com.mkwang.backend.modules.expense.entity.ExpenseCategory;
@@ -37,7 +37,7 @@ import java.util.Set;
  *   4. Update Department managers
  *   5. UserProfiles
  *   6. Wallets
- *   7. SystemFund
+ *   7. CompanyFund + Wallets (COMPANY_FUND + FLOAT_MAIN)
  *   8. SystemConfig
  *   9. ExpenseCategories (system defaults)
  */
@@ -50,7 +50,7 @@ public class DataInitializer implements CommandLineRunner {
     private final UserRepository            userRepository;
     private final DepartmentRepository      departmentRepository;
     private final WalletRepository          walletRepository;
-    private final SystemFundRepository      systemFundRepository;
+    private final CompanyFundRepository     companyFundRepository;
     private final SystemConfigRepository    systemConfigRepository;
     private final ExpenseCategoryRepository expenseCategoryRepository;
     private final PasswordEncoder           passwordEncoder;
@@ -71,7 +71,7 @@ public class DataInitializer implements CommandLineRunner {
         initRoles();
         initDepartments();
         initUsers();
-        initSystemFund();
+        initCompanyFund();
         initSystemConfigs();
         initExpenseCategories();
 
@@ -174,8 +174,8 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.TRANSACTION_APPROVE_WITHDRAW,
                 Permission.PAYROLL_MANAGE,
                 Permission.PAYROLL_EXECUTE,
-                Permission.SYSTEM_FUND_VIEW,
-                Permission.SYSTEM_FUND_TOPUP
+                Permission.COMPANY_FUND_VIEW,
+                Permission.COMPANY_FUND_TOPUP
         ));
 
         // CFO – Giám đốc Tài chính (financial governance: approve Flow 3, global dashboard)
@@ -199,8 +199,8 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.REQUEST_APPROVE_DEPT_TOPUP,
                 Permission.REQUEST_REJECT,
                 Permission.TRANSACTION_APPROVE_WITHDRAW,
-                Permission.SYSTEM_FUND_VIEW,
-                Permission.SYSTEM_FUND_TOPUP,
+                Permission.COMPANY_FUND_VIEW,
+                Permission.COMPANY_FUND_TOPUP,
                 Permission.DEPT_BUDGET_ALLOCATE,
                 Permission.DASHBOARD_VIEW_GLOBAL
         ));
@@ -353,20 +353,50 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     // =========================================================
-    // 4. SYSTEM FUND
+    // 4. COMPANY FUND + WALLETS (COMPANY_FUND + FLOAT_MAIN)
     // =========================================================
-    private void initSystemFund() {
-        log.info("── [4/5] Seeding SystemFund ...");
-        if (systemFundRepository.count() == 0) {
-            SystemFund fund = SystemFund.builder()
-                    .totalBalance(INITIAL_FUND)
+    private void initCompanyFund() {
+        log.info("── [4/5] Seeding CompanyFund + system wallets ...");
+
+        // 4a. CompanyFund metadata record (singleton id=1)
+        if (companyFundRepository.count() == 0) {
+            CompanyFund fund = CompanyFund.builder()
                     .bankName("Vietcombank")
                     .bankAccount("0011004999999")
+                    .externalBankBalance(INITIAL_FUND)
                     .build();
-            systemFundRepository.save(fund);
-            log.info("   💰 SystemFund created: {} VND", INITIAL_FUND);
+            companyFundRepository.save(fund);
+            log.info("   💰 CompanyFund metadata created");
         } else {
-            log.info("   💰 SystemFund already exists, skipping.");
+            log.info("   💰 CompanyFund already exists, skipping.");
+        }
+
+        // 4b. Wallet(COMPANY_FUND, ownerId=1) — company's operational cash
+        if (!walletRepository.existsByOwnerTypeAndOwnerId(WalletOwnerType.COMPANY_FUND, 1L)) {
+            walletRepository.save(Wallet.builder()
+                    .ownerType(WalletOwnerType.COMPANY_FUND)
+                    .ownerId(1L)
+                    .balance(INITIAL_FUND)
+                    .lockedBalance(BigDecimal.ZERO)
+                    .build());
+            log.info("   💰 Wallet(COMPANY_FUND) created: {} VND", INITIAL_FUND);
+        } else {
+            log.info("   💰 Wallet(COMPANY_FUND) already exists, skipping.");
+        }
+
+        // 4c. Wallet(FLOAT_MAIN, ownerId=0) — system-wide control wallet
+        //     balance = SUM of all non-FLOAT_MAIN wallets at this point
+        if (!walletRepository.existsByOwnerTypeAndOwnerId(WalletOwnerType.FLOAT_MAIN, 0L)) {
+            BigDecimal floatBalance = walletRepository.sumAllBalancesExcept(WalletOwnerType.FLOAT_MAIN);
+            walletRepository.save(Wallet.builder()
+                    .ownerType(WalletOwnerType.FLOAT_MAIN)
+                    .ownerId(0L)
+                    .balance(floatBalance)
+                    .lockedBalance(BigDecimal.ZERO)
+                    .build());
+            log.info("   🔍 Wallet(FLOAT_MAIN) created: {} VND", floatBalance);
+        } else {
+            log.info("   🔍 Wallet(FLOAT_MAIN) already exists, skipping.");
         }
     }
 

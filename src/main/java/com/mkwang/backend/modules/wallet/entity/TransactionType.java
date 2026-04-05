@@ -4,13 +4,13 @@ package com.mkwang.backend.modules.wallet.entity;
  * Business type of a wallet transaction.
  *
  * Fund flow overview (4-tier architecture):
- *   External Bank   →  SystemFund      : SYSTEM_TOPUP
- *   SystemFund      →  Department      : DEPT_QUOTA_ALLOCATION
+ *   External Bank   →  CompanyFund     : SYSTEM_TOPUP        ← boundary: FLOAT_MAIN +
+ *   CompanyFund     →  Department      : DEPT_QUOTA_ALLOCATION
  *   Department      →  Project         : PROJECT_QUOTA_ALLOCATION
  *   Project         →  User            : REQUEST_PAYMENT  (advance/expense payout)
- *   SystemFund      →  User            : PAYSLIP_PAYMENT
+ *   CompanyFund     →  User            : PAYSLIP_PAYMENT
  *   User            →  Project         : ADVANCE_RETURN   (remaining advance returned)
- *   User            ↔  External        : DEPOSIT / WITHDRAW
+ *   User            ↔  External        : DEPOSIT / WITHDRAW  ← boundary: FLOAT_MAIN ±
  *   Any             ←  Correction      : REVERSAL / SYSTEM_ADJUSTMENT
  */
 public enum TransactionType {
@@ -20,13 +20,13 @@ public enum TransactionType {
   WITHDRAW,                 // Rút tiền từ ví cá nhân ra ngân hàng
 
   // ── Internal fund allocation ──────────────────────────────────────
-  SYSTEM_TOPUP,             // Accountant/CFO nạp tiền từ ngân hàng vào SystemFund
-  DEPT_QUOTA_ALLOCATION,    // CFO cấp quota Phòng ban (SystemFund → Department)
+  SYSTEM_TOPUP,             // Accountant/CFO nạp tiền từ ngân hàng vào CompanyFund
+  DEPT_QUOTA_ALLOCATION,    // CFO cấp quota Phòng ban (CompanyFund → Department)
   PROJECT_QUOTA_ALLOCATION, // Manager cấp vốn Dự án (Department → Project)
 
   // ── Disbursement ──────────────────────────────────────────────────
   REQUEST_PAYMENT,          // Accountant giải ngân đơn chi tiêu (Project → User)
-  PAYSLIP_PAYMENT,          // Kế toán chi lương (SystemFund → User)
+  PAYSLIP_PAYMENT,          // Kế toán chi lương (CompanyFund → User)
 
   // ── Advance settlement ────────────────────────────────────────────
   ADVANCE_RETURN,           // Nhân viên hoàn trả phần tạm ứng còn dư (User → Project)
