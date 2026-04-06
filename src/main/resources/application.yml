@@ -22,7 +22,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create
+      ddl-auto: validate                     # Validate schema khi startup (không tự động tạo/alter)
     show-sql: false
     properties:
       hibernate:
@@ -110,6 +110,13 @@ spring:
         routing-key: ${RABBITMQ_MAIL_WARNING_ROUTING_KEY:mailWarning}
         dlq: ${RABBITMQ_MAIL_WARNING_DLQ:mailWarningDLQ}
         dlq-routing-key: ${RABBITMQ_MAIL_WARNING_DLQ_ROUTING_KEY:mailWarningDead}
+      # Template config cho 1 loại mail mới theo Strategy Pattern.
+      # Khi implement thật, đổi key `custom` thành tên nghiệp vụ và wire vào config/strategy/consumer.
+      custom:
+        queue: ${RABBITMQ_MAIL_CUSTOM_QUEUE:mailCustomQueue}
+        routing-key: ${RABBITMQ_MAIL_CUSTOM_ROUTING_KEY:mailCustom}
+        dlq: ${RABBITMQ_MAIL_CUSTOM_DLQ:mailCustomDLQ}
+        dlq-routing-key: ${RABBITMQ_MAIL_CUSTOM_DLQ_ROUTING_KEY:mailCustomDead}
     audit:
       exchange: ${RABBITMQ_AUDIT_EXCHANGE:auditExchange}
       dlx: ${RABBITMQ_AUDIT_DLX:auditDLX}
@@ -205,3 +212,5 @@ app:
     version: "2.1.0"
     command: pay
     order-type: other
+    locale: ${VNPAY_LOCALE:vn}
+    default-expire-minutes: ${VNPAY_DEFAULT_EXPIRE_MINUTES:15}

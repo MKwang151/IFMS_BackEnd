@@ -227,18 +227,6 @@ public class AuthServiceImpl implements AuthService {
     }
 
 
-    // ── POST /auth/reset-password ────────────────────────────────
-
-    @Override
-    @Transactional
-    public void resetPassword(ResetPasswordRequest request) {
-        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
-            throw new BadRequestException("Passwords do not match");
-        }
-        // TODO: Validate reset token từ DB (bảng password_reset_tokens)
-        throw new BadRequestException("Password reset token validation not yet implemented");
-    }
-
     // ── POST /auth/change-password ───────────────────────────────
 
     @Override

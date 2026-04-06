@@ -87,17 +87,6 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("OTP verified successfully"));
     }
 
-    // ── POST /auth/reset-password ────────────────────────────────
-
-    @PostMapping("/reset-password")
-    @Operation(summary = "Reset password using token from email")
-    public ResponseEntity<ApiResponse<Map<String, String>>> resetPassword(
-            @Valid @RequestBody ResetPasswordRequest request) {
-        authService.resetPassword(request);
-        return ResponseEntity.ok(ApiResponse.success("Success",
-                Map.of("message", "Password reset successfully")));
-    }
-
     // ── POST /auth/first-login/complete ─────────────────────────
 
     @PostMapping("/first-login/complete")

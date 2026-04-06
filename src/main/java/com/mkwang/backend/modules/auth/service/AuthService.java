@@ -18,8 +18,6 @@ public interface AuthService {
 
     void verifyPasswordResetOtp(VerifyOtpPasswordResetRequest request);
 
-    void resetPassword(ResetPasswordRequest request);
-
     void changePassword(ChangePasswordRequest request, String username);
 
     UserInfoResponse getCurrentUser(String username);
