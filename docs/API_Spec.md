@@ -1,22 +1,24 @@
 # IFMS – API Specification
 
-> **Base URL:** `https://api.ifms.vn/api/v1`  
-> **Auth:** `Authorization: Bearer <accessToken>`  
- tôi> **Phân trang:** `?page=1&limit=20` → `{ items, total, page, limit, totalPages }`  
-> **Cập nhật:** 09/03/2026 — Aligned với Database.md v2.0, Request_architecture.md (NO Escalation, 5 Roles, 3 Luồng duyệt)
+> **Base URL:** `https://api.ifms.vn/api/v1` (production) / `http://localhost:8080/api/v1` (local)  
+> **Auth:** `Authorization: Bearer <accessToken>` (JWT access token)  
+> **Phân trang:** `?page=0&size=20` (Spring pageable; một số endpoint cũ có thể dùng `limit`)  
+> **Cập nhật:** 06/04/2026 — đồng bộ theo `.claude/CLAUDE.md` và thư mục `docs/`
 
-### ⚠️ Kiến trúc Ngân sách Phân quyền (NO Escalation)
+### ⚠️ Bối cảnh kiến trúc hiện tại (nguồn chuẩn)
 
-> API này tuân thủ nghiêm ngặt kiến trúc **Decentralized Budget Management** (xem `Request_architecture.md`):
-> - **5 Roles:** ADMIN, MANAGER, TEAM_LEADER, EMPLOYEE, ACCOUNTANT
-> - **3 Luồng duyệt:** Mỗi luồng chỉ có **DUY NHẤT 1 cấp duyệt** — KHÔNG leo thang, KHÔNG vượt cấp
-> - **KHÔNG** có `PENDING_MANAGER`, `PENDING_ADMIN` — chỉ dùng `PENDING_APPROVAL` (backend xác định approver theo `request.type`)
-> - **KHÔNG** có action `ESCALATE`, KHÔNG có `MANAGER_LIMIT`/`TIER1_LIMIT`
-> - **Chốt chặn duy nhất:** Số dư khả dụng của quỹ tương ứng
+> Tài liệu này mô tả API cho **Internal Financial Management System (IFMS)** theo kiến trúc backend hiện tại:
+> - **RBAC 6 vai trò:** `EMPLOYEE`, `TEAM_LEADER`, `MANAGER`, `ACCOUNTANT`, `CFO`, `ADMIN` (dynamic permissions trong DB)
+> - **SoD (Segregation of Duties):** tách rõ **Decision** và **Execution** cho các nghiệp vụ tài chính
+> - **Wallet-first architecture:** mô hình ví nhiều tầng + ledger bất biến (append-only)
+> - **Boundary control:** `FLOAT_MAIN` dùng để kiểm tra toàn vẹn hệ thống (invariant)
+> - **Không dùng cơ chế escalation nhiều tầng** cho luồng request; approver/executor được xác định theo loại nghiệp vụ và permission
+
+> **Lưu ý trạng thái triển khai:** File này là API contract tổng hợp cho frontend/integration; một số API có thể đang ở mức kế hoạch hoặc rollout dần. Khi có khác biệt, ưu tiên đối chiếu code + migration hiện tại và `docs/implementation-status.md`.
 
 ### Response Wrapper — `ApiResponse<T>`
 
-Mọi response đều được wrap theo class `ApiResponse<T>`. Cấu trúc chung:
+Mọi endpoint chuẩn đều trả `ResponseEntity<ApiResponse<T>>`. Cấu trúc chung:
 
 ```json
 {
@@ -47,6 +49,13 @@ Mọi response đều được wrap theo class `ApiResponse<T>`. Cấu trúc chu
 > **Quy ước trong tài liệu:** Các response example bên dưới **chỉ hiển thị nội dung của field `data`** để gọn. Khi implement, toàn bộ đều nằm trong `ApiResponse<T>`.  
 > Với các endpoint trả message đơn giản (VD: `{ "message": "..." }`), `data` sẽ chứa object đó, VD: `{ "success": true, "message": "Success", "data": { "message": "Password changed successfully" }, "timestamp": "..." }`.
 
+### Financial & Domain Notes (đọc trước khi tích hợp)
+
+- `Wallet.availableBalance = balance - lockedBalance` là giá trị dùng cho kiểm tra khả dụng.
+- `FLOAT_MAIN.balance` phải bằng tổng số dư của toàn bộ wallet còn lại (trừ `FLOAT_MAIN`).
+- `SYSTEM_TOPUP`, `DEPOSIT`, `WITHDRAW` là boundary operations làm thay đổi `FLOAT_MAIN`.
+- Trạng thái request/withdraw/deposit trong tài liệu có thể khác nhãn cũ; khi map logic, ưu tiên enum thực tế trong backend.
+
 ---
 
 ## 1. COMMON – Dùng chung (mọi role)
@@ -70,11 +79,13 @@ Mọi response đều được wrap theo class `ApiResponse<T>`. Cấu trúc chu
 { "email": "string", "password": "string" }
 ```
 
-**Response:**
+**Response (normal login):**
 ```json
 {
   "accessToken": "eyJhbGci...",
   "refreshToken": "eyJhbGci...",
+  "requiresSetup": false,
+  "setupToken": null,
   "user": {
     "id": 1,
     "fullName": "Nguyen Van A",
@@ -88,9 +99,30 @@ Mọi response đều được wrap theo class `ApiResponse<T>`. Cấu trúc chu
   }
 }
 ```
+
+**Response (first login - chưa phát access/refresh token):**
+```json
+{
+  "accessToken": null,
+  "refreshToken": null,
+  "requiresSetup": true,
+  "setupToken": "0f5a4f92-8b34-4b53-a1f2-4d4888f3ab8f",
+  "user": {
+    "id": 1,
+    "fullName": "Nguyen Van A",
+    "email": "nguyen.van.a@company.com",
+    "role": "EMPLOYEE",
+    "departmentId": 1,
+    "departmentName": "Engineering",
+    "avatar": null,
+    "isFirstLogin": true,
+    "status": "ACTIVE"
+  }
+}
+```
 > **DB mapping:** `users` JOIN `roles` (qua `role_id`) JOIN `departments` (qua `department_id`) JOIN `user_profiles` → `file_storages` (qua `avatar_file_id`).  
 > `id`: `users.id` (BigInt).  
-> `role`: `roles.name` — EMPLOYEE | MANAGER | ACCOUNTANT | ADMIN.
+> `role`: `roles.name` (vd: EMPLOYEE, TEAM_LEADER, MANAGER, ACCOUNTANT, CFO, ADMIN).
 > `departmentId` / `departmentName`: nullable nếu chưa gán phòng ban.  
 > `avatar`: nullable nếu chưa upload. Signed URL Cloudinary (15 phút).  
 > `isFirstLogin`: `users.is_first_login`. Nếu `true` → FE redirect đổi mật khẩu.  
@@ -101,6 +133,7 @@ Mọi response đều được wrap theo class `ApiResponse<T>`. Cấu trúc chu
 ### POST `/auth/logout`
 Đăng xuất, vô hiệu hoá refresh token.
 
+**Headers:** `Authorization: Bearer <accessToken>`  
 **Body:** —  
 **Response:** `{ "message": "Logged out successfully" }`
 
@@ -109,45 +142,107 @@ Mọi response đều được wrap theo class `ApiResponse<T>`. Cấu trúc chu
 ### POST `/auth/refresh-token`
 Lấy access token mới từ refresh token.
 
+**Headers:** `Authorization: Bearer <accessToken>`  
 **Body:**
 ```json
 { "refreshToken": "eyJhbGci..." }
 ```
 **Response:**
 ```json
-{ "accessToken": "eyJhbGci...", "refreshToken": "eyJhbGci..." }
+{
+  "accessToken": "eyJhbGci...",
+  "refreshToken": "eyJhbGci...",
+  "requiresSetup": false,
+  "setupToken": null,
+  "user": {
+    "id": 1,
+    "fullName": "Nguyen Van A",
+    "email": "nguyen.van.a@company.com",
+    "role": "EMPLOYEE",
+    "departmentId": 1,
+    "departmentName": "Engineering",
+    "avatar": null,
+    "isFirstLogin": false,
+    "status": "ACTIVE"
+  }
+}
 ```
 
 ---
 
 ### POST `/auth/forgot-password`
-Gửi email đặt lại mật khẩu.
+Gửi OTP đặt lại mật khẩu về email (đồng thời nhận mật khẩu mới để xác nhận ở bước OTP).
 
 **Body:**
 ```json
-{ "email": "string" }
+{
+  "email": "string",
+  "newPassword": "string",
+  "confirmPassword": "string"
+}
 ```
-**Response:** `{ "message": "Reset email sent if account exists" }`
+**Response:** `{ "message": "If the email exists, a password reset OTP has been sent" }`
 
 ---
 
-### POST `/auth/reset-password`
-Đặt lại mật khẩu bằng token từ email.
+### POST `/auth/verify-password-reset`
+Xác thực OTP để hoàn tất reset password.
 
 **Body:**
 ```json
-{ "token": "string", "newPassword": "string", "confirmPassword": "string" }
+{ "email": "string", "otp": "string" }
 ```
-**Response:** `{ "message": "Password reset successfully" }`
+**Response:** `{ "message": "OTP verified successfully" }`
+
+---
+
+### POST `/auth/first-login/complete`
+Hoàn tất first-login setup bằng `setupToken`: đổi mật khẩu + đặt PIN, sau đó trả đầy đủ token.
+
+**Body:**
+```json
+{
+  "setupToken": "string",
+  "newPassword": "string",
+  "confirmPassword": "string",
+  "pin": "12345"
+}
+```
+
+**Response:**
+```json
+{
+  "accessToken": "eyJhbGci...",
+  "refreshToken": "eyJhbGci...",
+  "requiresSetup": null,
+  "setupToken": null,
+  "user": {
+    "id": 1,
+    "fullName": "Nguyen Van A",
+    "email": "nguyen.van.a@company.com",
+    "role": "EMPLOYEE",
+    "departmentId": 1,
+    "departmentName": "Engineering",
+    "avatar": null,
+    "isFirstLogin": false,
+    "status": "ACTIVE"
+  }
+}
+```
 
 ---
 
 ### POST `/auth/change-password`
-Đổi mật khẩu lần đầu khi `isFirstLogin = true` (không cần mật khẩu cũ).
+Đổi mật khẩu khi đã đăng nhập.
 
+**Headers:** `Authorization: Bearer <accessToken>`  
 **Body:**
 ```json
-{ "newPassword": "string" }
+{
+  "currentPassword": "string",
+  "newPassword": "string",
+  "confirmNewPassword": "string"
+}
 ```
 **Response:** `{ "message": "Password changed successfully" }`
 
@@ -155,6 +250,8 @@ Gửi email đặt lại mật khẩu.
 
 ### GET `/auth/me`
 Lấy thông tin user hiện tại (dùng để restore session khi reload trang).
+
+**Headers:** `Authorization: Bearer <accessToken>`
 
 **Response:**
 ```json
@@ -198,12 +295,9 @@ Lấy toàn bộ thông tin profile của user đang đăng nhập.
     "bankName": "MB Bank",
     "accountNumber": "0123456789",
     "accountOwner": "NGUYEN VAN A"
-  },
-  "securitySettings": {
-    "hasPIN": true,
-    "pinLockedUntil": null
   }
 }
+
 ```
 > `id`: `users.id`.  
 > `employeeCode`: `user_profiles.employee_code`.  
@@ -214,8 +308,6 @@ Lấy toàn bộ thông tin profile của user đang đăng nhập.
 > `bankInfo.bankName` = `user_profiles.bank_name`.  
 > `bankInfo.accountNumber` = `user_profiles.bank_account_num`.  
 > `bankInfo.accountOwner` = `user_profiles.bank_account_owner`.  
-> `securitySettings.hasPIN`: `true` nếu `user_security_settings.transaction_pin IS NOT NULL`.  
-> `securitySettings.pinLockedUntil`: `user_security_settings.locked_until`. `null` nếu không bị khoá hoặc đã hết hạn.
 
 ---
 
@@ -238,14 +330,43 @@ Cập nhật thông tin cá nhân.
 
 ---
 
+### GET `/uploads/signature`
+Lấy chữ ký upload Cloudinary để client upload trực tiếp (không upload file qua backend).
+
+**Headers:** `Authorization: Bearer <accessToken>`  
+**Query params:** `folder` (bắt buộc)
+
+`folder` là enum `UploadFolder`:
+- `AVATAR`
+- `REQUEST`
+
+Ví dụ request:
+`GET /uploads/signature?folder=AVATAR`
+
+**Response:**
+```json
+{
+  "signature": "abc123...",
+  "timestamp": 1738900000,
+  "apiKey": "123456789",
+  "cloudName": "ifms-cloud",
+  "folder": "avatars"
+}
+```
+> `folder` trong response là path Cloudinary thực tế (`avatars`, `requests`, ...).  
+> Sau khi client upload thành công lên Cloudinary, client gửi metadata file vào API nghiệp vụ tương ứng (ví dụ cập nhật avatar).
+
+---
+
 ### PUT `/users/me/avatar`
 Cập nhật avatar sau khi upload lên Cloudinary. Backend tạo record `file_storages` và cập nhật `user_profiles.avatar_file_id`. Nếu đã có avatar cũ, xoá file cũ trên Cloudinary và record `file_storages` tương ứng.
 
 **Body:**
 ```json
 {
-  "cloudinaryPublicId": "avatars/user_1_1738900000",
   "fileName": "profile.jpg",
+  "cloudinaryPublicId": "avatars/user_1_1738900000",
+  "url": "https://res.cloudinary.com/ifms-cloud/image/upload/v1738900000/avatars/user_1_1738900000.jpg",
   "fileType": "image/jpeg",
   "size": 245000
 }
@@ -255,7 +376,7 @@ Cập nhật avatar sau khi upload lên Cloudinary. Backend tạo record `file_s
 { "avatar": "https://res.cloudinary.com/.../signed..." }
 ```
 > Body chứa thông tin từ Cloudinary upload response → Backend tạo `file_storages` record.  
-> `url` trong `file_storages` được Backend tự tạo từ `cloudinaryPublicId` + `cloudName`.  
+> Các field bắt buộc theo `FileStorageRequest`: `fileName`, `cloudinaryPublicId`, `url`.  
 > Response trả Signed URL (Private mode, 15 phút).
 
 ---
@@ -272,28 +393,6 @@ Cập nhật thông tin ngân hàng nhận lương.
 { "bankName": "MB Bank", "accountNumber": "0123456789", "accountOwner": "NGUYEN VAN A" }
 ```
 > Map: `bankName` → `user_profiles.bank_name`, `accountNumber` → `user_profiles.bank_account_num`, `accountOwner` → `user_profiles.bank_account_owner`.
-
----
-
-### PUT `/users/me/password`
-Đổi mật khẩu (khi đã đăng nhập, yêu cầu mật khẩu hiện tại). Cập nhật `users.password` (BCrypt hash).
-
-**Body:**
-```json
-{ "currentPassword": "string", "newPassword": "string", "confirmPassword": "string" }
-```
-**Response:** `{ "message": "Password changed successfully" }`
-
----
-
-### POST `/users/me/pin`
-Tạo PIN giao dịch lần đầu (khi `hasPIN = false`). Hash BCrypt → lưu `user_security_settings.transaction_pin`.
-
-**Body:**
-```json
-{ "pin": "string (5 chữ số)" }
-```
-**Response:** `{ "message": "PIN created successfully" }`
 
 ---
 
@@ -346,32 +445,34 @@ Danh sách ngân hàng hỗ trợ (dùng cho dropdown chọn ngân hàng). Stati
 ### GET `/wallet`
 Lấy số dư ví của user hiện tại.
 
-**DB mapping:** `wallets` WHERE `user_id = currentUser.id`.
+**DB mapping:** `wallets` WHERE `owner_type = 'USER'` AND `owner_id = currentUser.id`.
 
 **Response:**
 ```json
 {
   "id": 1,
+  "ownerType": "USER",
+  "ownerId": 1,
   "balance": 10250000,
-  "pendingBalance": 2000000,
-  "debtBalance": 0,
-  "version": 5
+  "lockedBalance": 2000000,
+  "availableBalance": 8250000
 }
 ```
 > `id`: `wallets.id`.  
-> `balance`: `wallets.balance` — tiền khả dụng (có thể rút/chi).  
-> `pendingBalance`: `wallets.pending_balance` — tiền treo (đang chờ xử lý rút).  
-> `debtBalance`: `wallets.debt_balance` — dư nợ tạm ứng.  
-> `version`: `wallets.version` — dùng cho Optimistic Locking phía client (optional hiển thị).
+> `ownerType`: `wallets.owner_type` (với endpoint này luôn là `USER`).  
+> `ownerId`: `wallets.owner_id` (chính là `currentUser.id`).  
+> `balance`: `wallets.balance` — tổng số dư ví.  
+> `lockedBalance`: `wallets.locked_balance` — số dư đã lock/chờ settle.  
+> `availableBalance`: giá trị tính toán `balance - lockedBalance`.
 
 ---
 
 ### GET `/wallet/transactions`
 Lịch sử giao dịch ví của user hiện tại, với filter và phân trang.
 
-**Params:** `?type=DEPOSIT|WITHDRAW|REQUEST_PAYMENT|PAYSLIP_PAYMENT|SYSTEM_ADJUSTMENT&status=SUCCESS|PENDING|FAILED&from=2026-01-01&to=2026-02-28&page=1&limit=20`
+**Params:** `?from=2026-01-01&to=2026-02-28&page=0&size=20`
 
-**DB mapping:** `transactions` JOIN `wallets` (qua `wallet_id`) WHERE `wallets.user_id = currentUser.id`.
+**DB mapping:** `ledger_entries` JOIN `transactions` JOIN `wallets` WHERE wallet owner là user hiện tại.
 
 **Response:**
 ```json
@@ -380,44 +481,59 @@ Lịch sử giao dịch ví của user hiện tại, với filter và phân tran
     {
       "id": 101,
       "transactionCode": "TXN-8829145A",
-      "type": "PAYSLIP_PAYMENT",
-      "status": "SUCCESS",
+      "direction": "CREDIT",
       "amount": 15000000,
       "balanceAfter": 15250000,
-      "referenceType": "PAYSLIP",
-      "referenceId": 42,
-      "description": "Lương T02/2026",
       "createdAt": "2026-02-10T09:00:00Z"
     },
     {
       "id": 95,
       "transactionCode": "TXN-6612A33B",
-      "type": "WITHDRAW",
-      "status": "SUCCESS",
-      "amount": -2000000,
+      "direction": "DEBIT",
+      "amount": 2000000,
       "balanceAfter": 250000,
-      "referenceType": null,
-      "referenceId": null,
-      "description": "Rút tiền về MB Bank",
       "createdAt": "2026-02-08T14:20:00Z"
     }
   ],
   "total": 42,
-  "page": 1,
-  "limit": 20,
+  "page": 0,
+  "size": 20,
   "totalPages": 3
 }
 ```
-> `id`: `transactions.id`.  
-> `transactionCode`: `transactions.transaction_code` — mã giao dịch nội bộ, format `TXN-8829145A`.  
-> `type`: `transactions.type` — `DEPOSIT | WITHDRAW | REQUEST_PAYMENT | PAYSLIP_PAYMENT | SYSTEM_ADJUSTMENT`.
-> `status`: `transactions.status` — `SUCCESS | PENDING | FAILED`.  
-> `amount`: `transactions.amount` — số dương = tiền vào, số âm = tiền ra.  
-> `balanceAfter`: `transactions.balance_after` — snapshot số dư sau giao dịch.  
-> `referenceType`: `transactions.reference_type` — `REQUEST | PAYSLIP | null`.
-> `referenceId`: `transactions.reference_id` — ID chứng từ gốc (BigInt). Nullable.  
-> `description`: `transactions.description`.  
-> `createdAt`: `transactions.created_at`.
+> Mỗi `item` map theo `LedgerEntryResponse`: `id`, `transactionCode`, `direction`, `amount`, `balanceAfter`, `createdAt`.  
+> `direction`: `DEBIT | CREDIT` (`TransactionDirection`).  
+> `amount`: luôn là giá trị tuyệt đối của bút toán; chiều tăng/giảm được xác định bởi `direction`.  
+> `balanceAfter`: snapshot số dư wallet ngay sau bút toán.
+
+---
+
+### GET `/wallet/transactions/{transactionId}`
+Lấy chi tiết một giao dịch theo `transactionId` của user hiện tại.
+
+**Path params:** `transactionId` (Long, bắt buộc)
+
+**DB mapping:** `transactions` JOIN `wallets`, chỉ trả dữ liệu nếu giao dịch thuộc wallet của `currentUser`.
+
+**Response:**
+```json
+{
+  "id": 102,
+  "transactionCode": "TXN-9A33BC21",
+  "amount": 2000000,
+  "type": "WITHDRAW",
+  "status": "SUCCESS",
+  "referenceType": "WITHDRAWAL",
+  "referenceId": 12,
+  "description": "Rut tien - VCB20260405103000000001",
+  "createdAt": "2026-02-22T10:05:00"
+}
+```
+> Response map theo `TransactionResponse`: `id`, `transactionCode`, `amount`, `type`, `status`, `referenceType`, `referenceId`, `description`, `createdAt`.  
+> `type`: enum `TransactionType`.  
+> `status`: enum `TransactionStatus`.  
+> `referenceType`: enum `ReferenceType`, có thể `null` tùy giao dịch.  
+> `referenceId`: ID thực thể nghiệp vụ liên quan, có thể `null`.
 
 ---
 
@@ -432,22 +548,25 @@ Rút tiền về tài khoản ngân hàng đã đăng ký. Yêu cầu xác minh 
 ```json
 {
   "id": 102,
-  "transactionCode": "TXN-9A33BC21",
-  "type": "WITHDRAW",
-  "status": "SUCCESS",
-  "amount": -2000000,
-  "balanceAfter": 8250000,
-  "createdAt": "2026-02-22T10:05:00Z"
+  "withdrawCode": "WD-2026-000012",
+  "userId": 1,
+  "amount": 2000000,
+  "userNote": "Rut tien thang 04",
+  "status": "PENDING",
+  "accountantNote": null,
+  "failureReason": null,
+  "createdAt": "2026-02-22T10:05:00",
+  "updatedAt": "2026-02-22T10:05:00"
 }
 ```
-> Backend: verify PIN → kiểm tra `wallets.balance >= amount` → tạo `transactions` record → cập nhật `wallets.balance` (Optimistic Lock on `version`).  
-> Nếu `balance < amount` → `400 Bad Request: INSUFFICIENT_FUNDS`.  
-> Nếu PIN sai → `401 Unauthorized`. Quá 5 lần → `423 Locked`.
+> Response map theo `WithdrawRequestResponse`: `id`, `withdrawCode`, `userId`, `amount`, `userNote`, `status`, `accountantNote`, `failureReason`, `createdAt`, `updatedAt`.  
+> `status`: enum `WithdrawStatus` (`PENDING | COMPLETED | FAILED | REJECTED | CANCELLED`).  
+> `accountantNote`, `failureReason` chỉ có giá trị khi request đã được xử lý.
 
 ---
 
-### POST `/wallet/deposit/generate-qr`
-Tạo mã VietQR để nạp tiền vào ví.
+### POST `/wallet/deposit`
+Tạo yêu cầu nạp tiền vào ví qua cổng thanh toán.
 
 **Body:**
 ```json
@@ -456,17 +575,18 @@ Tạo mã VietQR để nạp tiền vào ví.
 **Response:**
 ```json
 {
-  "qrCodeUrl": "https://img.vietqr.io/image/970415-0123456789-compact.png?amount=500000&addInfo=IFMS_DEP_1_500000",
-  "amount": 500000,
-  "bankAccount": "0123456789",
-  "bankName": "MB Bank",
-  "accountOwner": "IFMS",
-  "description": "IFMS_DEP_1_500000",
-  "expiresAt": "2026-02-22T11:30:00Z"
+  "gateway": "VNPAY",
+  "depositCode": "DEP-2026-000001",
+  "transactionRef": "DEP-2026-000001",
+  "paymentUrl": "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...",
+  "qrCode": null,
+  "status": "PENDING",
+  "message": "Payment URL generated",
+  "expiredAt": "2026-02-22T11:30:00"
 }
 ```
-> `description` format gợi ý: `IFMS_DEP_{userId}_{amount}` — dùng để webhook xác nhận giao dịch.  
-> Sau khi ngân hàng xác nhận (qua webhook), Backend tạo `transactions` record (`type=DEPOSIT`, `gateway_provider=PAYOS`) và cộng `wallets.balance`.
+> Response map theo `PaymentResponse`: `gateway`, `depositCode`, `transactionRef`, `paymentUrl`, `qrCode`, `status`, `message`, `expiredAt`.  
+> Với VNPay redirect flow, `paymentUrl` là URL chính để FE redirect; `qrCode` có thể `null`.
 
 ---
 
@@ -484,27 +604,13 @@ Danh sách projects mà user đang tham gia (dùng populate dropdown khi tạo r
     {
       "id": 1,
       "projectCode": "PRJ-ERP-2026",
-      "name": "E-Commerce Platform",
-      "status": "ACTIVE",
-      "departmentId": 1,
-      "totalBudget": 150000000,
-      "totalSpent": 54500000,
-      "currentPhaseId": 2,
-      "currentPhaseName": "Phase 2: Payment Integration"
+      "name": "E-Commerce Platform"
     }
-  ],
-  "total": 12,
-  "page": 1,
-  "limit": 50,
-  "totalPages": 1
+  ]
 }
 ```
 > `id`: `projects.id` (BigInt).  
 > `projectCode`: `projects.project_code` — auto-generated, format `PRJ-ERP-2026`.  
-> `status`: `projects.status` — `PLANNING | ACTIVE | PAUSED | CLOSED`.  
-> `totalBudget` / `totalSpent`: `projects.total_budget` / `projects.total_spent`.  
-> `currentPhaseId` / `currentPhaseName`: join `project_phases` qua `projects.current_phase_id`. Nullable.  
-> `departmentId`: `projects.department_id`.
 
 ---
 
@@ -524,10 +630,7 @@ Danh sách phases của một project (dùng populate dropdown chọn phase khi 
       "phaseCode": "PH-UIUX-01",
       "name": "Phase 2: Payment Integration",
       "budgetLimit": 60000000,
-      "currentSpent": 54500000,
-      "status": "ACTIVE",
-      "startDate": "2026-01-01",
-      "endDate": "2026-03-31"
+      "currentSpent": 54500000
     }
   ]
 }
@@ -535,36 +638,31 @@ Danh sách phases của một project (dùng populate dropdown chọn phase khi 
 > `id`: `project_phases.id` (BigInt).  
 > `phaseCode`: `project_phases.phase_code` — auto-generated, format `PH-UIUX-01`.  
 > `budgetLimit` / `currentSpent`: `project_phases.budget_limit` / `project_phases.current_spent`.  
-> `status`: `project_phases.status` — `ACTIVE | CLOSED`.
 
 ---
 
-### GET `/files/signature`
-Lấy Cloudinary upload signature để upload file trực tiếp từ client (Private mode).
+### GET `/projects/{phaseId}`
+Danh sách tất cả danh mục chi tiêu của phase (dùng populate dropdown category khi tạo request theo phase).
 
-**Params:** `?folder=requests|avatars|payroll`
+**Path params:** `phaseId` (BigInt, bắt buộc)
 
 **Response:**
 ```json
 {
-  "signature": "abc123...",
-  "timestamp": 1738900000,
-  "cloudName": "ifms-cloud",
-  "apiKey": "123456789",
-  "folder": "requests",
-  "publicId": "requests/file_1738900000_abc123"
+  "items": [
+    {
+      "id": 1,
+      "name": "Travel & Accommodation"
+    },
+    {
+      "id": 2,
+      "name": "Equipment & Supplies"
+    }
+  ]
 }
 ```
-> `publicId`: auto-generated bởi Backend, đảm bảo unique trên Cloudinary.  
-> Client dùng các params này để upload trực tiếp lên Cloudinary SDK.
-
----
-
-### DELETE `/files/:publicId`
-Xoá file khỏi Cloudinary khi user xoá attachment trước khi submit. Backend cũng xoá record tương ứng trong `file_storages`.
-
-**Response:** `{ "message": "File deleted successfully" }`
-> `:publicId` = `file_storages.cloudinary_public_id` (URL-encoded nếu có `/`).
+> Mỗi item chỉ gồm `id`, `name` theo yêu cầu UI dropdown.  
+> `id`: `expense_categories.id` (BigInt). `name`: `expense_categories.name`.
 
 ---
 
@@ -689,17 +787,32 @@ Danh sách thông báo của user hiện tại.
 
 ---
 
-### PUT `/notifications/:id/read`
+### PATCH `/notifications/{id}/read`
 Đánh dấu một thông báo đã đọc.
 
-**Response:** `{ "id": 1, "isRead": true }`
+**Response:**
+```json
+{
+  "id": 1,
+  "type": "REQUEST_SUBMITTED",
+  "title": "Request moi can duyet",
+  "message": "Ban co mot request moi can xu ly.",
+  "refId": 101,
+  "refType": "REQUEST",
+  "referenceLink": "/requests/101",
+  "isRead": true,
+  "createdAt": "2026-04-06T09:30:00"
+}
+```
+> Response map theo `NotificationDto`.
 
 ---
 
-### PUT `/notifications/read-all`
+### PATCH `/notifications/read-all`
 Đánh dấu tất cả thông báo đã đọc.
 
-**Response:** `{ "message": "All notifications marked as read", "updatedCount": 3 }`
+**Response:** `null`
+> Endpoint trả `ApiResponse<Void>` nên `data = null`.
 
 ---
 
@@ -834,13 +947,13 @@ Chi tiết một request (employee chỉ xem request của mình).
 ---
 
 ### POST `/requests`
-Tạo request mới. Backend auto-generate `requestCode`. Status khởi tạo = `PENDING_APPROVAL`.
+Tạo request mới. Backend auto-generate `requestCode`. Trạng thái khởi tạo là `PENDING`.
 
-> **Luồng 1 (ADVANCE/EXPENSE/REIMBURSE):** BẮT BUỘC `projectId`, `phaseId`, `categoryId`. Validate: `amount ≤ phase_category_budgets.budget_limit - current_spent`. `EXPENSE`/`REIMBURSE` bắt buộc ≥1 attachment.  
-> **Luồng 2 (PROJECT_TOPUP):** BẮT BUỘC `projectId`. `phaseId`/`categoryId` = null. Validate: `amount ≤ departments.total_available_balance`. Chỉ TEAM_LEADER được tạo.  
-> **Luồng 3 (QUOTA_TOPUP):** `projectId`/`phaseId`/`categoryId` = null. Validate: `amount ≤ system_funds.total_balance`. Chỉ MANAGER được tạo.
+> **Flow 1 (ADVANCE / EXPENSE / REIMBURSE):** cần `projectId`, `phaseId`, `categoryId`. `EXPENSE` và `REIMBURSE` bắt buộc có chứng từ đính kèm.  
+> **Flow 2 (PROJECT_TOPUP):** cần `projectId`; `phaseId`/`categoryId` = `null`.  
+> **Flow 3 (DEPARTMENT_TOPUP):** `projectId`/`phaseId`/`categoryId` = `null`.
 
-**Body (Luồng 1 — chi tiêu cá nhân):**
+**Body (Flow 1 - ADVANCE/EXPENSE):**
 ```json
 {
   "type": "ADVANCE",
@@ -849,11 +962,41 @@ Tạo request mới. Backend auto-generate `requestCode`. Status khởi tạo = 
   "categoryId": 1,
   "amount": 5000000,
   "description": "Advance for development tools Q1",
-  "attachmentFileIds": [10, 11]
+  "attachments": [
+    {
+      "fileName": "tool_invoice.pdf",
+      "cloudinaryPublicId": "requests/file_tool_001",
+      "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/file_tool_001.pdf",
+      "fileType": "application/pdf",
+      "size": 120000
+    }
+  ]
 }
 ```
 
-**Body (Luồng 2 — xin cấp vốn dự án):**
+**Body (Flow 1 - REIMBURSE):**
+```json
+{
+  "type": "REIMBURSE",
+  "projectId": 1,
+  "phaseId": 2,
+  "categoryId": 1,
+  "advanceBalanceId": 15,
+  "amount": 3500000,
+  "description": "Quyet toan tam ung dot 1",
+  "attachments": [
+    {
+      "fileName": "invoice-04-2026.pdf",
+      "cloudinaryPublicId": "documents/abc_xyz_123",
+      "url": "https://res.cloudinary.com/.../upload/v1738900000/documents/abc_xyz_123.pdf",
+      "fileType": "application/pdf",
+      "size": 245000
+    }
+  ]
+}
+```
+
+**Body (Flow 2 - PROJECT_TOPUP):**
 ```json
 {
   "type": "PROJECT_TOPUP",
@@ -863,19 +1006,26 @@ Tạo request mới. Backend auto-generate `requestCode`. Status khởi tạo = 
 }
 ```
 
-**Body (Luồng 3 — xin cấp vốn phòng ban):**
+**Body (Flow 3 - DEPARTMENT_TOPUP):**
 ```json
 {
-  "type": "QUOTA_TOPUP",
+  "type": "DEPARTMENT_TOPUP",
   "amount": 200000000,
   "description": "Xin cấp vốn Q1/2026 cho phòng Engineering"
 }
 ```
 
-> `type`: `ADVANCE | EXPENSE | REIMBURSE | PROJECT_TOPUP | QUOTA_TOPUP`.  
-> `projectId` / `phaseId` / `categoryId`: Nullable tùy theo `type` (xem quy tắc trên).  
-> `attachmentFileIds`: danh sách `file_storages.id`. Backend tạo records trong `request_attachments`.  
-> Validation: `amount` tối thiểu 10,000 VND. Project phải `ACTIVE`. Phase phải `ACTIVE`.
+> `type`: `ADVANCE | EXPENSE | REIMBURSE | PROJECT_TOPUP | DEPARTMENT_TOPUP`.  
+> `advanceBalanceId`: chỉ dùng cho `REIMBURSE`; các type khác để `null`.  
+> `attachments`: danh sách object theo `FileStorageRequest` gồm `fileName`, `cloudinaryPublicId`, `url` (bắt buộc), `fileType`, `size`.  
+> `amount` phải dương; validate quyền tạo request và ngân sách khả dụng theo từng flow.
+
+**Status transition sau khi tạo:**
+- Bắt đầu: `PENDING`
+- Flow 1: `PENDING -> APPROVED_BY_TEAM_LEADER -> PENDING_ACCOUNTANT_EXECUTION -> PAID`
+- Flow 2: `PENDING -> APPROVED_BY_MANAGER -> PAID` (scheduler auto-pay)
+- Flow 3: `PENDING -> APPROVED_BY_CFO -> PAID` (scheduler auto-pay)
+- Terminal states: `REJECTED`, `CANCELLED`
 
 **Response:**
 ```json
@@ -883,24 +1033,19 @@ Tạo request mới. Backend auto-generate `requestCode`. Status khởi tạo = 
   "id": 102,
   "requestCode": "REQ-IT-2602-002",
   "type": "ADVANCE",
-  "status": "PENDING_APPROVAL",
+  "status": "PENDING",
   "amount": 5000000,
   "approvedAmount": null,
-  "description": "Advance for development tools Q1",
   "rejectReason": null,
+  "description": "Advance for development tools Q1",
+  "paidAt": null,
   "projectId": 1,
-  "projectCode": "PRJ-ERP-2026",
-  "projectName": "E-Commerce Platform",
   "phaseId": 2,
-  "phaseCode": "PH-PAY-01",
-  "phaseName": "Phase 2: Payment Integration",
   "categoryId": 1,
-  "categoryName": "Travel & Accommodation",
+  "advanceBalanceId": null,
   "requesterId": 1,
-  "requesterName": "Nguyen Van A",
   "attachments": [
     {
-      "fileId": 10,
       "fileName": "tool_invoice.pdf",
       "cloudinaryPublicId": "requests/file_tool_001",
       "url": "https://res.cloudinary.com/.../signed...",
@@ -914,6 +1059,8 @@ Tạo request mới. Backend auto-generate `requestCode`. Status khởi tạo = 
 }
 ```
 
+> Response bám theo domain model `Request`: `id`, `requestCode`, `type`, `status`, `amount`, `approvedAmount`, `rejectReason`, `description`, `paidAt`, các FK liên quan (`projectId`, `phaseId`, `categoryId`, `advanceBalanceId`), `attachments`, `timeline`, `createdAt`, `updatedAt`.
+
 ---
 
 ### PUT `/requests/:id`
@@ -924,10 +1071,25 @@ Chỉnh sửa request. Chỉ cho phép khi `status = PENDING_APPROVAL`. Chỉ ow
 {
   "amount": 5000000,
   "description": "Updated description",
-  "attachmentFileIds": [10, 12]
+  "attachments": [
+    {
+      "fileName": "Travel_Itinerary.pdf",
+      "cloudinaryPublicId": "requests/file_adv_001",
+      "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/file_adv_001.pdf",
+      "fileType": "application/pdf",
+      "size": 156789
+    },
+    {
+      "fileName": "Receipt_updated.jpg",
+      "cloudinaryPublicId": "requests/file_adv_012",
+      "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/file_adv_012.jpg",
+      "fileType": "image/jpeg",
+      "size": 89000
+    }
+  ]
 }
 ```
-> `attachmentFileIds`: ghi đè (sync) — danh sách mới thay thế hoàn toàn danh sách cũ trong `request_attachments`. Các file cũ không còn trong list sẽ bị xóa khỏi `request_attachments` (và Cloudinary nếu cần).
+> `attachments`: ghi đè (sync) — danh sách mới thay thế hoàn toàn danh sách cũ trong `request_attachments`. Các phần tử phải theo cấu trúc `FileStorageRequest`.
 
 **Response:**
 ```json
@@ -952,7 +1114,6 @@ Chỉnh sửa request. Chỉ cho phép khi `status = PENDING_APPROVAL`. Chỉ ow
   "requesterName": "Nguyen Van A",
   "attachments": [
     {
-      "fileId": 10,
       "fileName": "Travel_Itinerary.pdf",
       "cloudinaryPublicId": "requests/file_adv_001",
       "url": "https://res.cloudinary.com/.../signed...",
@@ -960,7 +1121,6 @@ Chỉnh sửa request. Chỉ cho phép khi `status = PENDING_APPROVAL`. Chỉ ow
       "size": 156789
     },
     {
-      "fileId": 12,
       "fileName": "Receipt_updated.jpg",
       "cloudinaryPublicId": "requests/file_adv_012",
       "url": "https://res.cloudinary.com/.../signed...",
@@ -977,7 +1137,7 @@ Chỉnh sửa request. Chỉ cho phép khi `status = PENDING_APPROVAL`. Chỉ ow
 ---
 
 ### DELETE `/requests/:id`
-Huỷ request (chuyển status sang `CANCELLED`). Chỉ cho phép khi `status = PENDING_APPROVAL`. Chỉ owner được huỷ.
+Huỷ request (chuyển status sang `CANCELLED`). Chỉ owner được huỷ và chỉ cho phép khi `status = PENDING`.
 
 **Response:** `{ "message": "Request cancelled successfully" }`
 > Backend cập nhật `requests.status = CANCELLED`. Tạo `request_histories`: `action = CANCEL`, `status_after_action = CANCELLED`.
@@ -1244,7 +1404,6 @@ Cập nhật thông tin phase.
 }
 ```
 
----
 
 ### 3.2 Quản lý Team Members (Team Overview)
 
@@ -1369,11 +1528,15 @@ Chi tiết một team member — bao gồm danh sách projects, recent requests 
 ---
 
 ### GET `/team-leader/approvals`
-Danh sách requests chi tiêu chờ Team Leader duyệt (`status = PENDING_APPROVAL`, `type IN (ADVANCE, EXPENSE, REIMBURSE)`), thuộc dự án mà user là LEADER.
+Danh sách requests chi tiêu chờ Team Leader quyết định ở **Flow 1** (`ADVANCE | EXPENSE | REIMBURSE`).
 
-**Params:** `?type=ADVANCE|EXPENSE|REIMBURSE&projectId=1&search=string&page=1&limit=20`
+**Params:** `?type=ADVANCE|EXPENSE|REIMBURSE&projectId=1&search=string&page=0&size=20`
 
-**DB mapping:** `requests` WHERE `status = PENDING_APPROVAL` AND `type IN (ADVANCE, EXPENSE, REIMBURSE)` AND `project_id IN (projects where currentUser is LEADER)`. JOIN `users` (requester) + `user_profiles` + `projects` + `project_phases` + `expense_categories` + `request_attachments` → `file_storages`.
+**DB mapping:**
+- `requests.status = PENDING`
+- `requests.type IN (ADVANCE, EXPENSE, REIMBURSE)`
+- `requests.project_id` thuộc các project mà current user là LEADER (`project_members.project_role = LEADER`)
+- Join `users`, `projects`, `project_phases`, `expense_categories`, `request_attachments -> file_storages`
 
 **Response:**
 ```json
@@ -1383,7 +1546,48 @@ Danh sách requests chi tiêu chờ Team Leader duyệt (`status = PENDING_APPRO
       "id": 101,
       "requestCode": "REQ-IT-2602-001",
       "type": "ADVANCE",
-      "status": "PENDING_APPROVAL",
+      "amount": 5000000,
+      "requester": {
+        "id": 1,
+        "fullName": "Nguyen Van An",
+        "avatar": "https://res.cloudinary.com/.../signed...",
+        "employeeCode": "MK001"
+      },
+      "project": {
+        "id": 1,
+        "projectCode": "PRJ-ERP-2026"
+      },
+      "phase": {
+        "id": 2,
+        "phaseCode": "PH-DEV-02"
+      },
+      "categoryId": 1,
+      "categoryCode": "CAT-EQP-001",
+      "categoryName": "Equipment & Software",
+      "createdAt": "2026-02-18T09:15:00"
+    }
+  ],
+  "total": 7,
+  "page": 0,
+  "size": 20,
+  "totalPages": 1
+}
+```
+
+> Team Leader chỉ làm **decision** (approve/reject), không execute payout.
+
+---
+
+### GET `/team-leader/approvals/:id`
+Chi tiết một request chi tiêu cần Team Leader duyệt.
+
+**Response:** 
+```json
+{
+      "id": 101,
+      "requestCode": "REQ-IT-2602-001",
+      "type": "ADVANCE",
+      "status": "PENDING",
       "amount": 5000000,
       "description": "Advance payment for API licenses.",
       "requester": {
@@ -1406,42 +1610,31 @@ Danh sách requests chi tiêu chờ Team Leader duyệt (`status = PENDING_APPRO
         "budgetLimit": 80000000,
         "currentSpent": 62500000
       },
-      "category": {
-        "id": 1,
-        "name": "Equipment & Software"
-      },
+      "categoryId": 1,
+      "categoryCode": "CAT-EQP-001",
+      "categoryName": "Equipment & Software",
       "attachments": [
         {
-          "fileId": 10,
           "fileName": "stripe_invoice_Q1.pdf",
+          "cloudinaryPublicId": "requests/stripe_invoice_q1",
           "url": "https://res.cloudinary.com/.../signed...",
           "fileType": "application/pdf",
           "size": 251000
         }
       ],
       "createdAt": "2026-02-18T09:15:00"
-    }
-  ],
-  "total": 7,
-  "page": 1,
-  "limit": 20,
-  "totalPages": 1
 }
 ```
 
----
 
-### GET `/team-leader/approvals/:id`
-Chi tiết một request chi tiêu cần Team Leader duyệt.
-
-**Response:** Giống `GET /requests/:id` nhưng bao gồm thông tin requester đầy đủ + `category`.
+Giống `GET /requests/:id` nhưng trong scope project của Team Leader và dùng trạng thái Flow 1 (`PENDING`, `APPROVED_BY_TEAM_LEADER`, `PENDING_ACCOUNTANT_EXECUTION`, `PAID`, `REJECTED`, `CANCELLED`).
 
 ---
 
 ### POST `/team-leader/approvals/:id/approve`
-Team Leader duyệt request chi tiêu. Status chuyển sang `PENDING_ACCOUNTANT` (chờ Kế toán giải ngân).
+Team Leader duyệt request chi tiêu (Flow 1).
 
-> ⚠️ **KHÔNG có MANAGER_LIMIT, KHÔNG escalate.** Team Leader có toàn quyền duyệt mọi số tiền, miễn là số dư Category Budget còn đủ.
+> Sau khi duyệt: request đi vào bước Accountant execution theo SoD của Flow 1.
 
 **Body:**
 ```json
@@ -1454,12 +1647,12 @@ Team Leader duyệt request chi tiêu. Status chuyển sang `PENDING_ACCOUNTANT`
 {
   "id": 101,
   "requestCode": "REQ-IT-2602-001",
-  "status": "PENDING_ACCOUNTANT",
+  "status": "PENDING_ACCOUNTANT_EXECUTION",
   "approvedAmount": 5000000,
   "comment": "Approved — forward to accountant."
 }
 ```
-> Backend tạo `request_histories`: `action = APPROVE`, `status_after_action = PENDING_ACCOUNTANT`.
+> Backend tạo `request_histories` với `action = APPROVE`. Trạng thái lưu vết theo flow là `APPROVED_BY_TEAM_LEADER`; trạng thái làm việc tiếp theo là `PENDING_ACCOUNTANT_EXECUTION`.
 
 ---
 
@@ -1480,6 +1673,8 @@ Team Leader từ chối request. Bắt buộc nhập lý do.
 }
 ```
 > Backend cập nhật `requests.status = REJECTED`, `requests.reject_reason`. Tạo `request_histories`: `action = REJECT`, `status_after_action = REJECTED`.
+
+> Flow 1 recap: `PENDING -> APPROVED_BY_TEAM_LEADER -> PENDING_ACCOUNTANT_EXECUTION -> PAID` hoặc `REJECTED`.
 
 ---
 
@@ -1756,21 +1951,10 @@ Chi tiết một nhân viên trong department.
       "projectRole": "MEMBER",
       "position": "Backend Developer"
     }
-  ],
-  "recentRequests": [
-    {
-      "id": 101,
-      "requestCode": "REQ-IT-2602-001",
-      "type": "ADVANCE",
-      "amount": 8500000,
-      "status": "PENDING_APPROVAL",
-      "createdAt": "2026-02-18T09:15:00"
-    }
   ]
 }
 ```
 > `assignedProjects`: join `project_members` → `projects`. `projectRole`: `project_members.project_role` (Enum: LEADER/MEMBER). `position`: `project_members.position` (free text).  
-> `recentRequests`: top 5 gần nhất từ `requests` WHERE `requester_id = member.id`.
 
 ---
 
@@ -1990,17 +2174,18 @@ Danh sách users có role `TEAM_LEADER` trong department của manager. Dùng ch
 
 ## 5. ACCOUNTANT
 
-> **Vai trò:** Kiểm tra chứng từ, giải ngân cho Luồng 1 (chi tiêu cá nhân). Accountant **không duyệt nghiệp vụ** — chỉ kiểm tra hóa đơn và thực hiện payout.
-> Accountant xem requests ở status `PENDING_ACCOUNTANT` (sau khi Team Leader đã approve).
+> **Vai trò theo SoD:** Accountant là tầng **execution** cho Flow 1 (`ADVANCE | EXPENSE | REIMBURSE`).  
+> Accountant **không quyết định phê duyệt nghiệp vụ** cho Flow 2/3 (PROJECT_TOPUP/DEPARTMENT_TOPUP) — các flow đó auto-pay sau khi Manager/CFO duyệt.  
+> Request chờ Accountant xử lý ở trạng thái `PENDING_ACCOUNTANT_EXECUTION`.
 
 ---
 
 ### GET `/accountant/disbursements`
-Danh sách requests đã được Team Leader duyệt, chờ giải ngân (`status = PENDING_ACCOUNTANT`).
+Danh sách requests Flow 1 đã qua decision stage của Team Leader, chờ Accountant execute (`status = PENDING_ACCOUNTANT_EXECUTION`).
 
-**Params:** `?type=ADVANCE|EXPENSE|REIMBURSE&search=string&page=1&limit=20`
+**Params:** `?type=ADVANCE|EXPENSE|REIMBURSE&search=string&page=0&size=20`
 
-**DB mapping:** `requests` WHERE `status = PENDING_ACCOUNTANT` JOIN `users` (requester) + `user_profiles` + `projects` + `project_phases` + `expense_categories` + `request_attachments` → `file_storages` + `request_histories` (tìm approval records).
+**DB mapping:** `requests` WHERE `status = PENDING_ACCOUNTANT_EXECUTION` AND `type IN (ADVANCE, EXPENSE, REIMBURSE)` JOIN `users` + `user_profiles` + `projects` + `project_phases` + `expense_categories` + `request_attachments` → `file_storages` + `request_histories`.
 
 **Response:**
 ```json
@@ -2010,7 +2195,7 @@ Danh sách requests đã được Team Leader duyệt, chờ giải ngân (`stat
       "id": 101,
       "requestCode": "REQ-IT-2602-001",
       "type": "ADVANCE",
-      "status": "PENDING_ACCOUNTANT",
+      "status": "PENDING_ACCOUNTANT_EXECUTION",
       "amount": 8500000,
       "approvedAmount": 8500000,
       "description": "Q1 advance for dev tools and API licenses.",
@@ -2035,10 +2220,13 @@ Danh sách requests đã được Team Leader duyệt, chờ giải ngân (`stat
         "phaseCode": "PH-DEV-02",
         "name": "Phase 2 – Development Sprint"
       },
+      "categoryId": 1,
+      "categoryCode": "CAT-EQP-001",
+      "categoryName": "Equipment & Software",
       "attachments": [
         {
-          "fileId": 10,
           "fileName": "jetbrains_invoice_Q1.jpg",
+          "cloudinaryPublicId": "requests/jetbrains_invoice_Q1",
           "url": "https://res.cloudinary.com/.../signed...",
           "fileType": "image/jpeg",
           "size": 245000
@@ -2048,8 +2236,8 @@ Danh sách requests đã được Team Leader duyệt, chờ giải ngân (`stat
     }
   ],
   "total": 8,
-  "page": 1,
-  "limit": 20,
+  "page": 0,
+  "size": 20,
   "totalPages": 1
 }
 ```
@@ -2066,7 +2254,7 @@ Chi tiết một disbursement (request đã được Team Leader duyệt). Respo
   "id": 101,
   "requestCode": "REQ-IT-2602-001",
   "type": "ADVANCE",
-  "status": "PENDING_ACCOUNTANT",
+  "status": "PENDING_ACCOUNTANT_EXECUTION",
   "amount": 8500000,
   "approvedAmount": 8500000,
   "description": "Q1 advance for dev tools and API licenses.",
@@ -2094,6 +2282,9 @@ Chi tiết một disbursement (request đã được Team Leader duyệt). Respo
     "budgetLimit": 80000000,
     "currentSpent": 62500000
   },
+  "categoryId": 1,
+  "categoryCode": "CAT-EQP-001",
+  "categoryName": "Equipment & Software",
   "attachments": [
     {
       "fileId": 10,
@@ -2108,7 +2299,7 @@ Chi tiết một disbursement (request đã được Team Leader duyệt). Respo
     {
       "id": 1,
       "action": "APPROVE",
-      "statusAfterAction": "PENDING_ACCOUNTANT",
+      "statusAfterAction": "APPROVED_BY_TEAM_LEADER",
       "actorId": 8,
       "actorName": "Le Van Minh",
       "comment": "Chứng từ hợp lệ, chuyển kế toán giải ngân.",
@@ -2123,7 +2314,11 @@ Chi tiết một disbursement (request đã được Team Leader duyệt). Respo
 ---
 
 ### POST `/accountant/disbursements/:id/disburse`
-Xác nhận giải ngân cho một request (PAYOUT). Yêu cầu PIN. Backend: trừ `projects.available_budget` → cộng `wallets.balance` của employee → tạo 2 `transactions` records (bút toán kép: DEBIT project fund + CREDIT employee wallet, liên kết qua `related_transaction_id`) → cập nhật `requests.status = PAID`. Cập nhật `project_phases.current_spent += approved_amount`.
+Xác nhận giải ngân cho một request Flow 1 (PAYOUT). Yêu cầu PIN. Backend execute theo kiến trúc ví:
+- `walletService.settleAndTransfer(PROJECT -> USER, REQUEST_PAYMENT)`
+- Tạo `Transaction` + 2 `LedgerEntry` (DEBIT project wallet, CREDIT user wallet)
+- Cập nhật `requests.status = PAID` + `paidAt`
+- Cập nhật `phase_category_budgets.current_spent += approvedAmount`
 
 **Body:**
 ```json
@@ -2167,6 +2362,8 @@ Từ chối giải ngân (revert request về `REJECTED`). Dùng khi phát hiệ
 }
 ```
 > Backend cập nhật `requests.status = REJECTED`, `requests.reject_reason`. Tạo `request_histories`: `action = REJECT`.
+
+> Lưu ý theo SoD: đây là reject ở execution checkpoint của Accountant (Flow 1), khác với reject ở decision stage của Team Leader.
 
 ---
 
@@ -2416,7 +2613,9 @@ Tự động tính và điền `advanceDeduct` cho từng payslip dựa trên `w
 ---
 
 ### POST `/accountant/payroll/:periodId/run`
-Chạy tính lương chính thức. Sinh `transactions` (PAYSLIP_PAYMENT) cho từng payslip hợp lệ, chuyển `final_net_salary` vào `wallets.balance` từng nhân viên, trừ `wallets.debt_balance`, trừ `system_funds.total_balance`.
+Chạy tính lương chính thức. Sinh `transactions` (`PAYSLIP_PAYMENT`) cho từng payslip hợp lệ, chuyển `final_net_salary` vào ví user và ghi nhận bút toán nội bộ theo mô hình wallet.
+
+Theo kiến trúc hiện tại, nguồn chi trả là `Wallet(COMPANY_FUND, ownerId=1)` (không dùng `system_funds`).
 
 > **Bắt buộc:** auto-netting phải được gọi trước. Nếu chưa → `422 Unprocessable Entity`.
 
@@ -2471,11 +2670,11 @@ Chỉnh sửa một dòng lương (payslip) trước khi run. Chỉ cho phép kh
 ---
 
 ### GET `/accountant/ledger`
-Sổ cái giao dịch hệ thống (transactions từ System Fund wallet).
+Sổ cái giao dịch tài chính hệ thống (trọng tâm các giao dịch tài chính nội bộ + boundary).
 
 **Params:** `?type=DEPOSIT|WITHDRAW|REQUEST_PAYMENT|PAYSLIP_PAYMENT|SYSTEM_ADJUSTMENT|DEPT_QUOTA_ALLOCATION|PROJECT_QUOTA_ALLOCATION&status=SUCCESS|PENDING|FAILED&referenceType=REQUEST|PAYSLIP|PROJECT|DEPARTMENT|SYSTEM&from=2026-01-01&to=2026-02-28&page=1&limit=20`
 
-**DB mapping:** `transactions` từ system wallet (hoặc toàn bộ nếu cần tổng quan). JOIN `users` (actor).
+**DB mapping:** `transactions` + `ledger_entries` + `wallets` + `users` (actor) theo scope truy vấn.
 
 **Response:**
 ```json
@@ -2517,7 +2716,7 @@ Tổng hợp số dư và dòng tiền.
 
 **Params:** `?from=2026-02-01&to=2026-02-28`
 
-**DB mapping:** `system_funds` + aggregate SUM từ `transactions`.
+**DB mapping:** `wallets` (đặc biệt `COMPANY_FUND`, `FLOAT_MAIN`) + aggregate SUM từ `transactions`.
 
 **Response:**
 ```json
@@ -2528,8 +2727,10 @@ Tổng hợp số dư và dòng tiền.
   "transactionCount": 156
 }
 ```
-> `currentBalance`: `system_funds.total_balance`.  
+> `currentBalance`: `Wallet(COMPANY_FUND).balance`.  
 > `totalInflow` / `totalOutflow`: SUM `transactions.amount` WHERE `amount > 0` / `amount < 0` trong khoảng thời gian.
+
+> Có thể bổ sung chỉ số toàn vẹn hệ thống từ endpoint reconciliation: `systemDiscrepancy = FLOAT_MAIN - SUM(all wallets except FLOAT_MAIN)`.
 
 ---
 
@@ -2557,6 +2758,24 @@ Chi tiết một giao dịch trong sổ cái.
   "actorId": 20,
   "actorName": "Nguyen Thi Thu Ha",
   "description": "Advance — dev tools Q1",
+  "ledgerEntries": [
+    {
+      "id": 9001,
+      "transactionCode": "TXN-8829145A",
+      "direction": "DEBIT",
+      "amount": 8500000,
+      "balanceAfter": 62500000,
+      "createdAt": "2026-02-19T10:30:00"
+    },
+    {
+      "id": 9002,
+      "transactionCode": "TXN-8829145A",
+      "direction": "CREDIT",
+      "amount": 8500000,
+      "balanceAfter": 15250000,
+      "createdAt": "2026-02-19T10:30:00"
+    }
+  ],
   "createdAt": "2026-02-19T10:30:00",
   "updatedAt": "2026-02-19T10:30:00"
 }
@@ -2564,82 +2783,11 @@ Chi tiết một giao dịch trong sổ cái.
 > `paymentRef`: `transactions.payment_ref` — mã tham chiếu cổng thanh toán. Nullable.  
 > `gatewayProvider`: `PaymentProvider` — `PAYOS | MOMO | VNPAY | ZALOPAY | INTERNAL_WALLET`.  
 > `relatedTransactionId`: `transactions.related_transaction_id` — ID giao dịch đối ứng (bút toán kép). Nullable.
+> `ledgerEntries`: danh sách bút toán map theo `LedgerEntryResponse` (`id`, `transactionCode`, `direction`, `amount`, `balanceAfter`, `createdAt`) với điều kiện `ledger_entries.transaction_id = :transactionId`.
+> Giao dịch boundary (ví dụ `SYSTEM_TOPUP`) có thể chỉ có 1 `LedgerEntry`; giao dịch nội bộ thường có 2 entries (DEBIT/CREDIT).
 
 ---
 
-### GET `/accountant/requests/:requestId`
-Chi tiết một request bất kỳ (không giới hạn theo user). Dùng khi Accountant cần xem request liên quan đến disbursement hoặc ledger.
-
-**Response:**
-```json
-{
-  "id": 101,
-  "requestCode": "REQ-IT-2602-001",
-  "type": "ADVANCE",
-  "status": "PAID",
-  "amount": 8500000,
-  "approvedAmount": 8500000,
-  "description": "Q1 advance for dev tools and API licenses.",
-  "rejectReason": null,
-  "requester": {
-    "id": 1,
-    "fullName": "Nguyen Van An",
-    "avatar": "https://res.cloudinary.com/.../signed...",
-    "employeeCode": "MK001",
-    "jobTitle": "Backend Developer",
-    "departmentName": "Engineering",
-    "bankName": "Techcombank",
-    "bankAccountNum": "19036277381012",
-    "bankAccountOwner": "NGUYEN VAN AN"
-  },
-  "project": {
-    "id": 1,
-    "projectCode": "PRJ-ERP-2026",
-    "name": "ERP Integration"
-  },
-  "phase": {
-    "id": 2,
-    "phaseCode": "PH-DEV-02",
-    "name": "Phase 2 – Development Sprint",
-    "budgetLimit": 80000000,
-    "currentSpent": 62500000
-  },
-  "attachments": [
-    {
-      "fileId": 10,
-      "fileName": "jetbrains_invoice_Q1.jpg",
-      "cloudinaryPublicId": "requests/jetbrains_invoice_Q1",
-      "url": "https://res.cloudinary.com/.../signed...",
-      "fileType": "image/jpeg",
-      "size": 245000
-    }
-  ],
-  "timeline": [
-    {
-      "id": 1,
-      "action": "APPROVE",
-      "statusAfterAction": "PENDING_ACCOUNTANT",
-      "actorId": 8,
-      "actorName": "Le Van Minh",
-      "comment": "Approved",
-      "createdAt": "2026-02-19T10:30:00"
-    },
-    {
-      "id": 2,
-      "action": "PAYOUT",
-      "statusAfterAction": "PAID",
-      "actorId": 20,
-      "actorName": "Nguyen Thi Thu Ha",
-      "comment": "Đã giải ngân",
-      "createdAt": "2026-02-22T10:00:00"
-    }
-  ],
-  "createdAt": "2026-02-18T09:00:00",
-  "updatedAt": "2026-02-22T10:00:00"
-}
-```
-
----
 
 ### GET `/accountant/payslips/:payslipId`
 Chi tiết một payslip cụ thể. Dùng khi Accountant cần tra cứu payslip từ ledger → `referenceId`.
@@ -2684,19 +2832,19 @@ Chi tiết một payslip cụ thể. Dùng khi Accountant cần tra cứu paysli
 
 ---
 
-## 6. ADMIN
+## 6. CFO
 
-> **Vai trò:** Cấp Quota cho Phòng ban, quản trị hệ thống. Admin duyệt **DUY NHẤT** đơn `QUOTA_TOPUP` (Luồng 3).
-> Admin **KHÔNG can thiệp** vào chi tiêu cá nhân (ADVANCE/EXPENSE/REIMBURSE) hoặc cấp vốn dự án (PROJECT_TOPUP).
+> **Vai trò theo Financial Architecture:** CFO phụ trách **decision stage** của Flow 3 (`DEPARTMENT_TOPUP`).
+> Sau khi CFO duyệt, scheduler auto-pay để cấp quota từ `COMPANY_FUND` sang `DEPARTMENT`.
 
 ---
 
-### GET `/admin/approvals`
-Danh sách requests xin cấp vốn phòng ban chờ Admin duyệt (`status = PENDING_APPROVAL`, `type = QUOTA_TOPUP`).
+### GET `/cfo/approvals`
+Danh sách requests xin cấp vốn phòng ban chờ CFO duyệt (`status = PENDING`, `type = DEPARTMENT_TOPUP`).
 
-**Params:** `?search=string&page=1&limit=20`
+**Params:** `?search=string&page=0&size=20`
 
-**DB mapping:** `requests` WHERE `status = PENDING_APPROVAL` AND `type = QUOTA_TOPUP`. JOIN `users` (requester — Manager) + `departments`.
+**DB mapping:** `requests` WHERE `status = PENDING` AND `type = DEPARTMENT_TOPUP`. JOIN `users` (requester — Manager) + `departments`.
 
 **Response:**
 ```json
@@ -2705,8 +2853,8 @@ Danh sách requests xin cấp vốn phòng ban chờ Admin duyệt (`status = PE
     {
       "id": 301,
       "requestCode": "REQ-SYS-0326-001",
-      "type": "QUOTA_TOPUP",
-      "status": "PENDING_APPROVAL",
+      "type": "DEPARTMENT_TOPUP",
+      "status": "PENDING",
       "amount": 200000000,
       "description": "Xin cấp vốn Q1/2026 cho phòng Engineering.",
       "requester": {
@@ -2727,25 +2875,25 @@ Danh sách requests xin cấp vốn phòng ban chờ Admin duyệt (`status = PE
     }
   ],
   "total": 3,
-  "page": 1,
-  "limit": 20,
+  "page": 0,
+  "size": 20,
   "totalPages": 1
 }
 ```
-> `department.totalAvailableBalance`: ngân sách phòng ban hiện tại → Admin biết Manager cần bao nhiêu.
+> `department.totalAvailableBalance`: ngân sách phòng ban hiện tại → CFO quyết định mức cấp quota.
 
 ---
 
-### GET `/admin/approvals/:id`
-Chi tiết một request QUOTA_TOPUP cần Admin duyệt.
+### GET `/cfo/approvals/:id`
+Chi tiết một request `DEPARTMENT_TOPUP` cần CFO duyệt.
 
 **Response:**
 ```json
 {
   "id": 301,
   "requestCode": "REQ-SYS-0326-001",
-  "type": "QUOTA_TOPUP",
-  "status": "PENDING_APPROVAL",
+  "type": "DEPARTMENT_TOPUP",
+  "status": "PENDING",
   "amount": 200000000,
   "approvedAmount": null,
   "description": "Xin cấp vốn Q1/2026 cho phòng Engineering.",
@@ -2766,23 +2914,22 @@ Chi tiết một request QUOTA_TOPUP cần Admin duyệt.
     "totalProjectQuota": 500000000,
     "totalAvailableBalance": 50000000
   },
-  "systemFund": {
-    "totalBalance": 5000000000
+  "companyFund": {
+    "balance": 5000000000
   },
   "timeline": [],
   "createdAt": "2026-03-01T09:00:00",
   "updatedAt": "2026-03-01T09:00:00"
 }
 ```
-> `systemFund.totalBalance`: `system_funds.total_balance` — Admin cần biết quỹ tổng còn bao nhiêu.
+> `companyFund.balance`: `Wallet(COMPANY_FUND).balance` — số dư nguồn cấp quota.
 
 ---
 
-### POST `/admin/approvals/:id/approve`
-Admin duyệt QUOTA_TOPUP. Status chuyển sang `APPROVED` → auto `PAID`.
-Hệ thống tự động: `system_funds.total_balance -= approved_amount`, `departments.total_available_balance += approved_amount`.
+### POST `/cfo/approvals/:id/approve`
+CFO duyệt `DEPARTMENT_TOPUP`. Status chuyển sang `APPROVED_BY_CFO` và scheduler sẽ auto-pay thành `PAID`.
 
-> ⚠️ **KHÔNG CÓ ESCALATION.** Admin có toàn quyền duyệt mọi số tiền, miễn là System Fund còn đủ.
+Hệ thống tự động khi auto-pay: `Wallet(COMPANY_FUND) -= approvedAmount`, `Wallet(DEPARTMENT) += approvedAmount`.
 
 **Body:**
 ```json
@@ -2793,18 +2940,18 @@ Hệ thống tự động: `system_funds.total_balance -= approved_amount`, `dep
 {
   "id": 301,
   "requestCode": "REQ-SYS-0326-001",
-  "status": "PAID",
+  "status": "APPROVED_BY_CFO",
   "approvedAmount": 200000000,
-  "comment": "Approved — Q1 quota allocated."
+  "comment": "Approved by CFO — waiting auto allocation."
 }
 ```
-> Backend tạo `request_histories`: `action = APPROVE`, `status_after_action = APPROVED`.  
-> Backend auto-transition: `APPROVED → PAID` (tạo Transaction `DEPT_QUOTA_ALLOCATION`).
+> Backend tạo `request_histories`: `action = APPROVE`, `status_after_action = APPROVED_BY_CFO`.  
+> Scheduler auto-transition: `APPROVED_BY_CFO -> PAID` (transaction type `DEPT_QUOTA_ALLOCATION`).
 
 ---
 
-### POST `/admin/approvals/:id/reject`
-Admin từ chối QUOTA_TOPUP.
+### POST `/cfo/approvals/:id/reject`
+CFO từ chối `DEPARTMENT_TOPUP`.
 
 **Body:**
 ```json
@@ -2819,6 +2966,13 @@ Admin từ chối QUOTA_TOPUP.
   "rejectReason": "System fund insufficient for this quarter"
 }
 ```
+
+---
+
+## 7. ADMIN
+
+> **Vai trò theo RBAC hiện tại:** Admin tập trung IAM + cấu hình hệ thống.
+> Admin không giữ financial approval flow cho `DEPARTMENT_TOPUP`.
 
 ---
 
@@ -3273,7 +3427,7 @@ Cập nhật cấu hình hệ thống. Gửi danh sách key-value cần cập nh
 
 ---
 
-## 7. WEBSOCKET – Real-time Channels
+## 8. WEBSOCKET – Real-time Channels
 
 > **Transport:** SockJS + STOMP over WebSocket (Spring Boot `spring-boot-starter-websocket`).  
 > **Endpoint kết nối:** `wss://api.ifms.vn/ws` — Client gửi `Authorization: Bearer <accessToken>` qua STOMP `CONNECT` header.  
@@ -3344,8 +3498,8 @@ Cập nhật cấu hình hệ thống. Gửi danh sách key-value cần cập nh
 - `POST /team-leader/approvals/:id/reject` → gửi cho requester
 - `POST /manager/approvals/:id/approve` → gửi cho requester (PROJECT_TOPUP → PAID)
 - `POST /manager/approvals/:id/reject` → gửi cho requester
-- `POST /admin/approvals/:id/approve` → gửi cho requester (QUOTA_TOPUP → PAID)
-- `POST /admin/approvals/:id/reject` → gửi cho requester
+- `POST /cfo/approvals/:id/approve` → gửi cho requester (DEPARTMENT_TOPUP, sau đó auto-pay)
+- `POST /cfo/approvals/:id/reject` → gửi cho requester
 - `POST /accountant/disbursements/:id/disburse` → gửi cho requester (`status: PAID`)
 - `POST /accountant/disbursements/:id/reject` → gửi cho requester
 
