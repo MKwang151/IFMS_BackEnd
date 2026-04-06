@@ -19,21 +19,11 @@ public class WithdrawRequestResponse {
     private Long userId;
     private BigDecimal amount;
 
-    // Snapshot bank info
-    private String creditAccount;
-    private String creditAccountName;
-    private String creditBankCode;
-    private String creditBankName;
-
     private String userNote;
     private WithdrawStatus status;
 
     // Filled after processing
-    private String bankTransactionId;
     private String accountantNote;
-    private Long executedBy;
-    private LocalDateTime executedAt;
-    private Long transactionId;
     private String failureReason;
 
     // Audit timestamps
