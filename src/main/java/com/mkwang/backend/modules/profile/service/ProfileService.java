@@ -1,5 +1,7 @@
 package com.mkwang.backend.modules.profile.service;
 
+import com.mkwang.backend.modules.profile.dto.request.UpdateMyProfileRequest;
+import com.mkwang.backend.modules.profile.dto.response.MyProfileResponse;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
 import com.mkwang.backend.modules.profile.entity.UserSecuritySettings;
 import com.mkwang.backend.modules.user.entity.User;
@@ -37,4 +39,8 @@ public interface ProfileService {
      * @throws com.mkwang.backend.common.exception.ResourceNotFoundException nếu không tồn tại
      */
     UserProfile getProfileByUserId(Long userId);
+
+    MyProfileResponse getMyProfile(Long userId);
+
+    MyProfileResponse updateMyProfile(Long userId, UpdateMyProfileRequest request);
 }
