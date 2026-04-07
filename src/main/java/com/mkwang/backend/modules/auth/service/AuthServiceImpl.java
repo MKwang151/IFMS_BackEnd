@@ -283,8 +283,8 @@ public class AuthServiceImpl implements AuthService {
         // 4. Change password
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
 
-        // 5. Set transaction PIN
-        profileService.createSecuritySettings(user, passwordEncoder.encode(request.getPin()));
+        // 5. Set transaction PIN (validate + hash in ProfileService)
+        profileService.createSecuritySettings(user, request.getPin());
 
         // 6. Mark first-login complete + bump tokenVersion (single-session)
         user.setIsFirstLogin(false);

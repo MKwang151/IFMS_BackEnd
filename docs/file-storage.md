@@ -16,12 +16,14 @@ Tài liệu này mô tả cách các domain khác sử dụng `FileStorageServic
 - `CloudinaryService`:
   - `generateSignature(UploadFolder folder)` để sinh chữ ký upload.
   - `deleteFile(String publicId)` để xóa file trên Cloudinary.
+  - Không cung cấp hàm generate signed URL để trả cho client.
 - `FileStorageService`:
   - `save(FileStorageRequest request)`
   - `saveAll(List<FileStorageRequest> requests)`
   - `findById(Long id)`
   - `findAllByIds(List<Long> ids)`
   - `deleteFile(Long id)` (xóa Cloudinary + xóa DB)
+  - Không cung cấp hàm generate signed URL.
 
 ## 3) Luồng upload chuẩn (khuyến nghị cho mọi domain)
 
@@ -149,6 +151,8 @@ public class ExpenseRequestService {
 - Endpoint business của domain nên nhận metadata file từ client sau khi upload Cloudinary thành công.
 - Lưu `file_storages.id` làm khóa ngoại ở domain để quản lý lifecycle file rõ ràng.
 - Khi xóa entity nghiệp vụ có file đính kèm, gọi `fileStorageService.deleteFile(fileId)` để dọn cả Cloudinary và DB.
+- URL trả cho client dùng trực tiếp từ `FileStorage.url` (public/permanent), không ký lại và không có TTL.
+- Không thêm lại các method kiểu `generateSignedUrl(...)` vào `CloudinaryService` hoặc `FileStorageService`.
 
 ## 7) Mapping nhanh từ Cloudinary response -> `FileStorageRequest`
 

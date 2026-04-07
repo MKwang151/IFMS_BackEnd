@@ -1,5 +1,7 @@
 package com.mkwang.backend.modules.profile.mapper;
 
+import com.mkwang.backend.modules.profile.dto.response.MyAvatarResponse;
+import com.mkwang.backend.modules.profile.dto.response.MyBankInfoResponse;
 import com.mkwang.backend.modules.profile.dto.response.MyProfileResponse;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
 import com.mkwang.backend.modules.user.entity.User;
@@ -29,6 +31,20 @@ public class ProfileMapper {
                         .accountNumber(profile.getBankAccountNum())
                         .accountOwner(profile.getBankAccountOwner())
                         .build())
+                .build();
+    }
+
+    public MyAvatarResponse toMyAvatarResponse(String avatarUrl) {
+        return MyAvatarResponse.builder()
+                .avatar(avatarUrl)
+                .build();
+    }
+
+    public MyBankInfoResponse toMyBankInfoResponse(UserProfile profile) {
+        return MyBankInfoResponse.builder()
+                .bankName(profile.getBankName())
+                .accountNumber(profile.getBankAccountNum())
+                .accountOwner(profile.getBankAccountOwner())
                 .build();
     }
 }
