@@ -44,6 +44,7 @@ public class SecurityConfig {
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
+                        "/banks",
                         "/actuator/**",
                         // WebSocket handshake — JWT auth handled at STOMP channel level
                         "/ws/**",

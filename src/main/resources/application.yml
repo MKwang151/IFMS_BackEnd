@@ -151,7 +151,7 @@ application:
     pin:
       length: ${PIN_LENGTH:5}
       max-retry: ${PIN_MAX_RETRY:5}
-      lock-minutes: ${PIN_LOCK_MINUTES:30}
+      lock-minutes: ${PIN_LOCK_MINUTES:5}
 
   # ── Brevo Mail ───────────────────────────────────
   mail:

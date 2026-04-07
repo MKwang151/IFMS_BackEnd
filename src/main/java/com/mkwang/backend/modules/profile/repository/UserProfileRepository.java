@@ -10,4 +10,6 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, Long> 
     boolean existsByEmployeeCode(String employeeCode);
 
     boolean existsByPhoneNumber(String phoneNumber);
+
+    boolean existsByPhoneNumberAndUserIdNot(String phoneNumber, Long userId);
 }
