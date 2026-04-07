@@ -5,6 +5,7 @@ import com.mkwang.backend.common.exception.BadRequestException;
 import com.mkwang.backend.modules.auth.dto.request.*;
 import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
+import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.auth.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -114,10 +116,11 @@ public class AuthController {
     // ── GET /auth/me ─────────────────────────────────────────────
 
     @GetMapping("/me")
+    @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Get current user info (restore session)")
     public ResponseEntity<ApiResponse<UserInfoResponse>> getCurrentUser(
-            Authentication authentication) {
-        UserInfoResponse response = authService.getCurrentUser(authentication.getName());
+            @AuthenticationPrincipal UserDetailsAdapter authentication) {
+        UserInfoResponse response = authService.getCurrentUser(authentication.getUsername());
         return ResponseEntity.ok(ApiResponse.success("Success", response));
     }
 

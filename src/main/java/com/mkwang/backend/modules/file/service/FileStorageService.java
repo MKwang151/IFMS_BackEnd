@@ -35,11 +35,12 @@ public class FileStorageService {
         return fileStorageRepository.saveAll(files);
     }
 
-    public Optional<FileStorage> findById(Long id) {
-        return fileStorageRepository.findById(id);
+    public FileStorage getFile(Long id) {
+        return fileStorageRepository.findById(id)
+                .orElseThrow( () -> new ResourceNotFoundException("File not found with id: " + id));
     }
 
-    public List<FileStorage> findAllByIds(List<Long> ids) {
+    public List<FileStorage> getMutipleFiles(List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             return Collections.emptyList();
         }

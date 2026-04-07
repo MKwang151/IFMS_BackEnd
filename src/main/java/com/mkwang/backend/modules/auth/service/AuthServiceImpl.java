@@ -8,6 +8,7 @@ import com.mkwang.backend.modules.auth.dto.response.AuthenticationResponse;
 import com.mkwang.backend.modules.auth.dto.response.UserInfoResponse;
 import com.mkwang.backend.modules.auth.security.JwtService;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
+import com.mkwang.backend.modules.file.service.FileStorageService;
 import com.mkwang.backend.modules.mail.publisher.MailPublisher;
 import com.mkwang.backend.modules.mail.publisher.MailType;
 import com.mkwang.backend.modules.profile.service.ProfileService;
@@ -36,6 +37,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
     private final ProfileService profileService;
+    private final FileStorageService fileStorageService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -303,6 +305,7 @@ public class AuthServiceImpl implements AuthService {
     // ── GET /auth/me ─────────────────────────────────────────────
 
     @Override
+    @Transactional(readOnly = true)
     public UserInfoResponse getCurrentUser(String username) {
         var user = userRepository.findByEmail(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -326,6 +329,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private UserInfoResponse buildUserInfo(User user) {
+
+        var avatar = profileService.getProfileByUserId(user.getId()).getAvatarFile(); // ensure profile is loaded for serialization (avatar)
         return UserInfoResponse.builder()
                 .id(user.getId())
                 .fullName(user.getFullName())
@@ -333,7 +338,7 @@ public class AuthServiceImpl implements AuthService {
                 .role(user.getRole().getName())
                 .departmentId(user.getDepartment() != null ? user.getDepartment().getId() : null)
                 .departmentName(user.getDepartment() != null ? user.getDepartment().getName() : null)
-                .avatar(null)
+                .avatar(avatar != null ? fileStorageService.getFile(avatar.getId()).getUrl() : null)
                 .isFirstLogin(user.getIsFirstLogin())
                 .status(user.getStatus().name())
                 .build();
