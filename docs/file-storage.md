@@ -122,12 +122,12 @@ public class ExpenseRequestService {
 - Nếu danh sách `null` hoặc rỗng -> trả về `Collections.emptyList()`.
 - Kết quả: trả về danh sách `FileStorage` đã persist.
 
-### `findById(Long id)`
+### `getFile(Long id)`
 
 - Mục đích: lấy metadata 1 file theo `file_storages.id`.
-- Kết quả: `Optional<FileStorage>`.
+- Kết quả: `FileStorage`.
 
-### `findAllByIds(List<Long> ids)`
+### `getMutipleFiles(List<Long> ids)`
 
 - Mục đích: lấy nhiều file theo danh sách `id`.
 - Nếu danh sách `null` hoặc rỗng -> trả về `Collections.emptyList()`.
