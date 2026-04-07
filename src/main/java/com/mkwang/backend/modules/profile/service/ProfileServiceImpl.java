@@ -26,6 +26,7 @@ import com.mkwang.backend.modules.profile.repository.UserProfileRepository;
 import com.mkwang.backend.modules.profile.repository.UserSecuritySettingsRepository;
 import com.mkwang.backend.modules.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ProfileServiceImpl implements ProfileService {
 
@@ -183,7 +185,7 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = {UnauthorizedException.class, LockedException.class})
     public PinVerifyResponse verifyMyPin(Long userId, VerifyMyPinRequest request) {
         if (!pinValidator.isValidFormat(request.getPin())) {
             throw new UnauthorizedException("Invalid PIN");
