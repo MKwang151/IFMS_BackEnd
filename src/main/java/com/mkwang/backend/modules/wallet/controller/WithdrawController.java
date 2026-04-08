@@ -1,12 +1,15 @@
 package com.mkwang.backend.modules.wallet.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
+import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.wallet.dto.request.CreateWithdrawRequest;
 import com.mkwang.backend.modules.wallet.dto.request.ProcessWithdrawRequest;
 import com.mkwang.backend.modules.wallet.dto.response.WithdrawRequestResponse;
 import com.mkwang.backend.modules.wallet.entity.WithdrawStatus;
 import com.mkwang.backend.modules.wallet.service.withdrawing.WithdrawService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,7 +36,8 @@ import org.springframework.web.bind.annotation.*;
  *   PUT /withdrawals/{id}/reject  → reject + unlock funds
  */
 @RestController
-@RequestMapping("/api/v1/withdrawals")
+@RequestMapping("/wallet/withdraw")
+@SecurityRequirement(name = "bearerAuth")
 @RequiredArgsConstructor
 public class WithdrawController {
 
@@ -49,6 +53,7 @@ public class WithdrawController {
      * Auth: WALLET_WITHDRAW
      */
     @PostMapping
+    @Operation(summary = "Tạo yêu cầu rút tiền mới. Nếu số tiền rút <= hạn mức role, yêu cầu sẽ được tự động thực thi.")
     public ResponseEntity<ApiResponse<WithdrawRequestResponse>> createRequest(
             @AuthenticationPrincipal UserDetailsAdapter userDetails,
             @Valid @RequestBody CreateWithdrawRequest request) {
@@ -77,7 +82,7 @@ public class WithdrawController {
      * Auth: WALLET_WITHDRAW
      */
     @GetMapping("/my")
-    public ResponseEntity<ApiResponse<Page<WithdrawRequestResponse>>> getMyRequests(
+    public ResponseEntity<ApiResponse<PageResponse<WithdrawRequestResponse>>> getMyRequests(
             @AuthenticationPrincipal UserDetailsAdapter userDetails,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {

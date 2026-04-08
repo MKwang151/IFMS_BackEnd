@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.wallet.service.withdrawing;
 
+import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.modules.wallet.dto.request.CreateWithdrawRequest;
 import com.mkwang.backend.modules.wallet.dto.response.WithdrawRequestResponse;
 import com.mkwang.backend.modules.wallet.entity.WithdrawStatus;
@@ -51,7 +52,7 @@ public interface WithdrawService {
     /**
      * User views their own withdrawal history.
      */
-    Page<WithdrawRequestResponse> getMyRequests(Long userId, Pageable pageable);
+    PageResponse<WithdrawRequestResponse> getMyRequests(Long userId, Pageable pageable);
 
     /**
      * Accountant views all withdrawal requests, optionally filtered by status.
