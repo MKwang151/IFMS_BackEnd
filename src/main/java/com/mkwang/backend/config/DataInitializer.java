@@ -4,8 +4,8 @@ import com.mkwang.backend.modules.accounting.entity.CompanyFund;
 import com.mkwang.backend.modules.accounting.repository.CompanyFundRepository;
 import com.mkwang.backend.modules.config.entity.SystemConfig;
 import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
-import com.mkwang.backend.modules.expense.entity.ExpenseCategory;
-import com.mkwang.backend.modules.expense.repository.ExpenseCategoryRepository;
+import com.mkwang.backend.modules.project.entity.ExpenseCategory;
+import com.mkwang.backend.modules.project.repository.ExpenseCategoryRepository;
 import com.mkwang.backend.modules.organization.entity.Department;
 import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
@@ -23,7 +23,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 

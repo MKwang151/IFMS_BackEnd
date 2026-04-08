@@ -1,14 +1,11 @@
 package com.mkwang.backend.modules.notification.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
+import com.mkwang.backend.modules.notification.dto.response.NotificationListResponse;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.notification.dto.response.NotificationDto;
 import com.mkwang.backend.modules.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -23,17 +20,16 @@ public class NotificationController {
     /**
      * GET /notifications
      * Lấy danh sách notifications của user hiện tại (mới nhất trước).
-     * Query param: unreadOnly=true để chỉ lấy chưa đọc.
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<NotificationDto>>> getNotifications(
+    public ResponseEntity<ApiResponse<NotificationListResponse>> getNotifications(
             @AuthenticationPrincipal UserDetailsAdapter principal,
-            @RequestParam(defaultValue = "false") boolean unreadOnly,
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-
-        Page<NotificationDto> page = notificationService.getNotifications(
-                principal.getUser().getId(), unreadOnly, pageable);
-        return ResponseEntity.ok(ApiResponse.success(page));
+            @RequestParam(required = false) Boolean isRead,
+            @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int limit) {
+        return ResponseEntity.ok(ApiResponse.success(notificationService.getNotifications(
+                principal.getUser().getId(), isRead, type, page, limit)));
     }
 
     /**

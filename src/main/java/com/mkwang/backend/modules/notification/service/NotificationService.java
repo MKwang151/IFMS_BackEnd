@@ -1,9 +1,8 @@
 package com.mkwang.backend.modules.notification.service;
 
 import com.mkwang.backend.modules.notification.dto.response.NotificationDto;
+import com.mkwang.backend.modules.notification.dto.response.NotificationListResponse;
 import com.mkwang.backend.modules.notification.entity.NotificationType;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
 public interface NotificationService {
 
@@ -22,14 +21,7 @@ public interface NotificationService {
     void notify(Long userId, String userEmail, NotificationType type,
                 String title, String message, Long refId, String refType);
 
-    /**
-     * Lấy danh sách notifications của user hiện tại (phân trang, mới nhất trước).
-     *
-     * @param userId     ID người dùng
-     * @param unreadOnly true = chỉ lấy chưa đọc
-     * @param pageable   phân trang
-     */
-    Page<NotificationDto> getNotifications(Long userId, boolean unreadOnly, Pageable pageable);
+    NotificationListResponse getNotifications(Long userId, Boolean isRead, String type, int page, int limit);
 
     /** Số lượng notification chưa đọc — dùng cho badge trên UI. */
     long getUnreadCount(Long userId);
