@@ -1,7 +1,7 @@
 package com.mkwang.backend.modules.request.entity;
 
 import com.mkwang.backend.common.base.BaseEntity;
-import com.mkwang.backend.modules.expense.entity.ExpenseCategory;
+import com.mkwang.backend.modules.project.entity.ExpenseCategory;
 import com.mkwang.backend.modules.file.entity.FileStorage;
 import com.mkwang.backend.modules.project.entity.Project;
 import com.mkwang.backend.modules.project.entity.ProjectPhase;

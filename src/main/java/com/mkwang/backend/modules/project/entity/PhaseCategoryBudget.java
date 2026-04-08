@@ -1,6 +1,5 @@
-package com.mkwang.backend.modules.expense.entity;
+package com.mkwang.backend.modules.project.entity;
 
-import com.mkwang.backend.modules.project.entity.ProjectPhase;
 import jakarta.persistence.*;
 import lombok.*;
 

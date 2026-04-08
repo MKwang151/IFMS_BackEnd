@@ -1,0 +1,21 @@
+package com.mkwang.backend.modules.project.service;
+
+import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryListResponse;
+import com.mkwang.backend.modules.project.dto.response.ProjectOptionResponse;
+import com.mkwang.backend.modules.project.dto.response.ProjectPhasesResponse;
+import com.mkwang.backend.modules.project.entity.PhaseStatus;
+import com.mkwang.backend.modules.project.entity.ProjectStatus;
+import com.mkwang.backend.modules.user.entity.User;
+
+import java.util.List;
+
+public interface ProjectQueryService {
+
+    List<ProjectOptionResponse> getProjects(User currentUser, ProjectStatus status);
+
+    ProjectPhasesResponse getProjectPhases(User currentUser, Long projectId, PhaseStatus status);
+
+    ExpenseCategoryListResponse getPhaseCategories(User currentUser, Long phaseId);
+}
+
+

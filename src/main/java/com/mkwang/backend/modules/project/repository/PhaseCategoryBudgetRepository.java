@@ -1,7 +1,7 @@
-package com.mkwang.backend.modules.expense.repository;
+package com.mkwang.backend.modules.project.repository;
 
-import com.mkwang.backend.modules.expense.entity.PhaseCategoryBudget;
-import com.mkwang.backend.modules.expense.entity.PhaseCategoryBudgetId;
+import com.mkwang.backend.modules.project.entity.PhaseCategoryBudget;
+import com.mkwang.backend.modules.project.entity.PhaseCategoryBudgetId;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

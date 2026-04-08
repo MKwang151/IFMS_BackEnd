@@ -1,4 +1,4 @@
-package com.mkwang.backend.modules.expense.entity;
+package com.mkwang.backend.modules.project.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
