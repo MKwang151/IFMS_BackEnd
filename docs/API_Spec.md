@@ -542,7 +542,7 @@ Rút tiền về tài khoản ngân hàng đã đăng ký. Yêu cầu xác minh 
 
 **Body:**
 ```json
-{ "amount": 2000000, "pin": "string" }
+{ "amount": 2000000, "userNote": "rut tien thang 8" ,"pin": "string" }
 ```
 **Response:**
 ```json
@@ -562,6 +562,66 @@ Rút tiền về tài khoản ngân hàng đã đăng ký. Yêu cầu xác minh 
 > Response map theo `WithdrawRequestResponse`: `id`, `withdrawCode`, `userId`, `amount`, `userNote`, `status`, `accountantNote`, `failureReason`, `createdAt`, `updatedAt`.  
 > `status`: enum `WithdrawStatus` (`PENDING | COMPLETED | FAILED | REJECTED | CANCELLED`).  
 > `accountantNote`, `failureReason` chỉ có giá trị khi request đã được xử lý.
+
+---
+
+### DELETE `/wallet/withdraw/{id}`
+Người dùng tự hủy yêu cầu rút tiền của chính mình.
+
+**Path params:** `id` (BigInt, bắt buộc)
+
+**Business rules:**
+- Chỉ được hủy request thuộc chính user đang đăng nhập.
+- Chỉ hủy được khi `status = PENDING`.
+
+**Response:**
+```json
+{
+  "id": 102,
+  "withdrawCode": "WD-2026-000012",
+  "userId": 1,
+  "amount": 2000000,
+  "userNote": "Rut tien thang 04",
+  "status": "CANCELLED",
+  "accountantNote": null,
+  "failureReason": null,
+  "createdAt": "2026-02-22T10:05:00",
+  "updatedAt": "2026-02-22T10:15:00"
+}
+```
+> Response map theo `WithdrawRequestResponse`: `id`, `withdrawCode`, `userId`, `amount`, `userNote`, `status`, `accountantNote`, `failureReason`, `createdAt`, `updatedAt`.
+
+---
+
+### GET `/wallet/withdraw/my`
+Lấy lịch sử rút tiền của user hiện tại (có phân trang).
+
+**Params:** `?page=0&size=10`
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "id": 102,
+      "withdrawCode": "WD-2026-000012",
+      "userId": 1,
+      "amount": 2000000,
+      "userNote": "Rut tien thang 04",
+      "status": "PENDING",
+      "accountantNote": null,
+      "failureReason": null,
+      "createdAt": "2026-02-22T10:05:00",
+      "updatedAt": "2026-02-22T10:05:00"
+    }
+  ],
+  "total": 1,
+  "page": 0,
+  "size": 10,
+  "totalPages": 1
+}
+```
+> Endpoint này sử dụng `PageResponse<WithdrawRequestResponse>` theo chuẩn phân trang chung: `items`, `total`, `page`, `size`, `totalPages`.
 
 ---
 
@@ -593,7 +653,7 @@ Tạo yêu cầu nạp tiền vào ví qua cổng thanh toán.
 ### GET `/projects`
 Danh sách projects mà user đang tham gia (dùng populate dropdown khi tạo request).
 
-**Params:** `?status=PLANNING|ACTIVE|PAUSED|CLOSED&page=1&limit=50`
+**Params:** `?status=PLANNING|ACTIVE|PAUSED|CLOSED
 
 **DB mapping:** `projects` JOIN `project_members` WHERE `project_members.user_id = currentUser.id`. Nếu role = MANAGER → lọc theo `projects.department_id`. Nếu ADMIN/ACCOUNTANT → xem toàn bộ tuỳ scope.
 
