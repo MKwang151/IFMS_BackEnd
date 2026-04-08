@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.wallet.service;
 
+import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.modules.wallet.dto.response.LedgerEntryResponse;
 import com.mkwang.backend.modules.wallet.dto.response.TransactionResponse;
 import com.mkwang.backend.modules.wallet.dto.response.WalletResponse;
@@ -111,6 +112,12 @@ public interface WalletService {
      * All transactions linked to a business entity (Request, Payslip, etc.)
      */
     List<TransactionResponse> getTransactionsByReference(ReferenceType refType, Long refId);
+
+    WalletResponse getMyWallet(Long userId);
+
+    PageResponse<LedgerEntryResponse> getMyTransactions(Long userId, LocalDate from, LocalDate to, Pageable pageable);
+
+    TransactionResponse getMyTransaction(Long userId, Long transactionId);
 
     // ── Boundary Operations ──────────────────────────────────────────
 

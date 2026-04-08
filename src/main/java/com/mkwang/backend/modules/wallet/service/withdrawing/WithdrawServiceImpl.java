@@ -1,12 +1,16 @@
 package com.mkwang.backend.modules.wallet.service.withdrawing;
 
+import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.common.exception.BadRequestException;
+import com.mkwang.backend.common.exception.LockedException;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.exception.UnauthorizedException;
+import com.mkwang.backend.common.utils.PinValidator;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeGenerator;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
 import com.mkwang.backend.modules.config.service.SystemConfigService;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
+import com.mkwang.backend.modules.profile.dto.request.VerifyMyPinRequest;
 import com.mkwang.backend.modules.profile.service.ProfileService;
 import com.mkwang.backend.modules.user.entity.User;
 import com.mkwang.backend.modules.user.repository.UserRepository;
@@ -56,15 +60,21 @@ public class WithdrawServiceImpl implements WithdrawService {
     private final SystemConfigService systemConfigService;
     private final BusinessCodeGenerator codeGenerator;
     private final WithdrawMapper withdrawMapper;
+    private final PinValidator pinValidator;
 
     // ══════════════════════════════════════════════════════════════════
     //  USER ACTIONS
     // ══════════════════════════════════════════════════════════════════
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = {UnauthorizedException.class, LockedException.class})
     @PreAuthorize("hasAuthority('WALLET_WITHDRAW')")
     public WithdrawRequestResponse createRequest(Long userId, CreateWithdrawRequest request) {
+        if (!pinValidator.isValidFormat(request.pin())) {
+            throw new BadRequestException("PIN phải gồm đúng " + pinValidator.getPinLength() + " chữ số");
+        }
+        profileService.verifyMyPin(userId, VerifyMyPinRequest.builder().pin(request.pin()).build());
+
         // 1. Read bank info from UserProfile
         UserProfile profile = profileService.getProfileByUserId(userId);
         validateBankInfo(profile);
@@ -123,10 +133,18 @@ public class WithdrawServiceImpl implements WithdrawService {
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('WALLET_WITHDRAW')")
-    public Page<WithdrawRequestResponse> getMyRequests(Long userId, Pageable pageable) {
-        return withdrawRequestRepository
+    public PageResponse<WithdrawRequestResponse> getMyRequests(Long userId, Pageable pageable) {
+        Page<WithdrawRequestResponse> page = withdrawRequestRepository
                 .findByUserIdOrderByCreatedAtDesc(userId, pageable)
                 .map(withdrawMapper::toDto);
+
+        return PageResponse.<WithdrawRequestResponse>builder()
+                .items(page.getContent())
+                .total(page.getTotalElements())
+                .page(page.getNumber())
+                .size(page.getSize())
+                .totalPages(page.getTotalPages())
+                .build();
     }
 
     // ══════════════════════════════════════════════════════════════════

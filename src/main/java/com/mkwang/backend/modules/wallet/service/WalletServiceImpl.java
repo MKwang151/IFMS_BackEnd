@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.wallet.service;
 
+import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.common.exception.BadRequestException;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeGenerator;
@@ -17,6 +18,7 @@ import com.mkwang.backend.modules.wallet.service.locking.WalletKey;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -254,6 +256,47 @@ public class WalletServiceImpl implements WalletService {
                 .stream()
                 .map(walletMapper::toDto)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('WALLET_VIEW_SELF')")
+    public WalletResponse getMyWallet(Long userId) {
+        return getWallet(WalletOwnerType.USER, userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('WALLET_TRANSACTION_VIEW')")
+    public PageResponse<LedgerEntryResponse> getMyTransactions(Long userId, LocalDate from, LocalDate to, Pageable pageable) {
+        if ((from == null) != (to == null)) {
+            throw new BadRequestException("Both 'from' and 'to' must be provided together");
+        }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BadRequestException("'from' date must be before or equal to 'to' date");
+        }
+
+        Page<LedgerEntryResponse> page = getLedgerHistory(WalletOwnerType.USER, userId, from, to, pageable);
+        return PageResponse.<LedgerEntryResponse>builder()
+                .items(page.getContent())
+                .total(page.getTotalElements())
+                .page(page.getNumber())
+                .size(page.getSize())
+                .totalPages(page.getTotalPages())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('WALLET_TRANSACTION_VIEW')")
+    public TransactionResponse getMyTransaction(Long userId, Long transactionId) {
+        Wallet wallet = walletRepository.findByOwnerTypeAndOwnerId(WalletOwnerType.USER, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet", "owner", "USER:" + userId));
+
+        Transaction txn = transactionRepository.findOwnedTransactionById(transactionId, wallet.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction", "id", transactionId));
+
+        return walletMapper.toDto(txn);
     }
 
     // ══════════════════════════════════════════════════════════════════

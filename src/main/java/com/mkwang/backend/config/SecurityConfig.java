@@ -47,7 +47,10 @@ public class SecurityConfig {
                         "/banks",
                         "/actuator/**",
                         // WebSocket handshake — JWT auth handled at STOMP channel level
-                        "/ws/**"
+                        "/ws/**",
+                        // Payment gateway callback/return URL must be public
+                        "/payments/*/ipn",
+                        "/payments/*/return"
         };
 
         @Bean
