@@ -1,6 +1,6 @@
 # Notification Module Guide
 
-Tai lieu nay mo ta module `notification` de cac domain khac co the tich hop dung cach: publish event, luu lich su thong bao, push realtime qua WebSocket, va quan ly vong doi thong bao.
+Tai lieu nay mo ta module `notification` de cac domain khac co the tich hop dung cach: publish event, luu lich su thong bao, push realtime qua SSE, va quan ly vong doi thong bao.
 
 ## 1) Kien truc tong quan
 
@@ -10,12 +10,12 @@ Module notification chay theo mo hinh async qua RabbitMQ:
 2. `NotificationServiceImpl` publish `NotificationEvent` vao RabbitMQ qua `NotificationPublisher`.
 3. `NotificationConsumer` nhan event tu queue.
 4. Consumer persist vao bang `notifications`.
-5. Consumer push realtime qua STOMP user queue `/user/queue/notifications` (best-effort).
+5. Consumer push realtime qua SSE stream `/notifications/stream` (best-effort).
 
 Nguyen tac quan trong:
 
 - Persist truoc, push sau.
-- Neu WebSocket push fail, thong bao van nam trong DB de UI doc lai qua API.
+- Neu SSE push fail, thong bao van nam trong DB de UI doc lai qua API.
 
 ## 2) Cac thanh phan chinh trong module
 
@@ -38,7 +38,7 @@ Nguyen tac quan trong:
 Payload event duoc truyen qua RabbitMQ:
 
 - `userId`
-- `userEmail`
+- `userEmail` (legacy field, khong con dung cho realtime SSE push)
 - `type` (string tu `NotificationType.name()`)
 - `title`
 - `message`
@@ -47,9 +47,22 @@ Payload event duoc truyen qua RabbitMQ:
 
 ### `consumer/NotificationConsumer`
 
-- `@RabbitListener` queue chinh: consume event, parse `NotificationType`, save DB, push WebSocket.
+- `@RabbitListener` queue chinh: consume event, parse `NotificationType`, save DB, push SSE.
 - `@RabbitListener` DLQ: log warning cho monitoring.
 - Neu `type` khong hop le: throw `InternalSystemException` -> retry -> co the vao DLQ.
+- Khi push SSE, consumer goi `SseService.sendToUser(userId, SseEvent)` (service dung chung tai `common`).
+
+### `common/sse/SseService`
+
+- Service SSE dung chung cross-module, quan ly ket noi theo tung `userId`.
+- `connect(userId)`: tao `SseEmitter`, dang ky cleanup (`onCompletion`, `onTimeout`, `onError`) va gui event `connected`.
+- `sendToUser(userId, SseEvent)`: push event theo `SseEvent.event`, payload la `SseEvent.data`.
+
+### `common/dto/SseEvent`
+
+- DTO command cho luong SSE noi bo:
+  - `event`: ten SSE event (vi du: `notification`)
+  - `data`: payload gui cho client (vi du: `NotificationDto`)
 
 ### `service/NotificationService` + `NotificationServiceImpl`
 
@@ -82,10 +95,15 @@ Luu y: field `type` trong `NotificationEvent` phai khop chinh xac `NotificationT
 
 Controller: `NotificationController` (`/notifications`)
 
-- `GET /notifications?unreadOnly=false&page=0&size=20`
-  - tra `ApiResponse<Page<NotificationDto>>`
+- `GET /notifications?isRead={true|false}&type={NOTIFICATION_TYPE}&page=1&limit=20`
+  - tra `ApiResponse<NotificationListResponse>`
+  - `isRead`, `type` la optional
+  - `page` bat dau tu `1`
 - `GET /notifications/unread-count`
   - tra `ApiResponse<Long>`
+- `GET /notifications/stream`
+  - mo kenh SSE (`text/event-stream`) cho user hien tai
+  - event realtime: `notification` (data la `NotificationDto`)
 - `PATCH /notifications/{id}/read`
   - danh dau da doc 1 thong bao
 - `PATCH /notifications/read-all`
@@ -95,21 +113,26 @@ Quyen:
 
 - Service methods REST duoc bao ve boi `@PreAuthorize("hasAuthority('NOTIFICATION_VIEW')")`.
 
-## 5) WebSocket realtime flow
+## 5) SSE realtime flow
 
 Thong so lien quan:
 
-- STOMP endpoint: `/ws`
-- User destination prefix: `/user`
-- Queue user nhan notification: `/queue/notifications`
+- SSE endpoint: `/notifications/stream`
+- Content-Type: `text/event-stream`
+- Event name: `notification`
 
 Consumer push:
 
-- `messagingTemplate.convertAndSendToUser(event.userEmail(), "/queue/notifications", NotificationDto)`
+- `sseService.sendToUser(event.userId(), SseEvent.builder().event("notification").data(NotificationDto).build())`
+
+Luu y:
+
+- `SseEvent` la DTO noi bo de quy dinh event name + payload cho `SseService`.
+- Frontend van nhan SSE event name `notification` voi data la `NotificationDto` (khong doi contract client).
 
 Frontend thuong subscribe:
 
-- `/user/queue/notifications`
+- `GET /notifications/stream` (EventSource)
 
 ## 6) Cach domain khac publish notification
 
@@ -152,7 +175,7 @@ Khi can them loai thong bao moi, lam theo thu tu:
 4. Neu frontend can icon/mau rieng theo type, update map UI theo enum moi.
 5. Test ca 2 kenh:
    - API pull (`GET /notifications`)
-   - WebSocket push (`/user/queue/notifications`)
+   - SSE push (`GET /notifications/stream`)
 
 Thong thuong KHONG can sua `NotificationRabbitMQConfig` khi chi them type moi, vi notification module dang dung 1 queue chung cho tat ca type.
 
@@ -189,6 +212,8 @@ Env vars tuong ung:
 - `src/main/java/com/mkwang/backend/modules/notification/consumer/NotificationConsumer.java`
 - `src/main/java/com/mkwang/backend/modules/notification/entity/NotificationType.java`
 - `src/main/java/com/mkwang/backend/modules/notification/controller/NotificationController.java`
+- `src/main/java/com/mkwang/backend/common/sse/SseService.java`
+- `src/main/java/com/mkwang/backend/common/dto/SseEvent.java`
 - `src/main/resources/application.yml`
 
 ---
