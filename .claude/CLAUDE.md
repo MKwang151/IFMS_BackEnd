@@ -59,7 +59,6 @@ src/main/java/com/mkwang/backend/
 For detailed domain architecture, see:
 - **[docs/financial-architecture.md](../docs/financial-architecture.md)** — 4-tier wallet, flows, AdvanceBalance
 - **[docs/rbac-model.md](../docs/rbac-model.md)** — Roles, permissions, seeded users
-- **[docs/implementation-status.md](../docs/implementation-status.md)** — What's done vs not yet implemented
 
 ---
 
@@ -372,33 +371,27 @@ For domain-specific architecture and conventions, refer to:
    - Permission naming convention (RESOURCE_ACTION)
    - Seeded users (test accounts)
 
-6. **[docs/implementation-status.md](../docs/implementation-status.md)**
-   - ✅ Completed components
-   - ❌ Not yet implemented
-   - Migration history (V1–V11)
-   - Tech stack versions
-
-7. **[docs/deposit-withdraw.md](../docs/deposit-withdraw.md)**
+6. **[docs/deposit-withdraw.md](../docs/deposit-withdraw.md)**
    - Deposit/withdraw implementation plan (VNPay + MockBank)
    - End-to-end flows, idempotency, and demo checklist
 
-8. **[docs/system-config.md](../docs/system-config.md)**
+7. **[docs/system-config.md](../docs/system-config.md)**
    - System config key-value model and Redis cache strategy
    - TTL, cache annotations, and admin management APIs
 
-9. **[docs/API_Spec.md](../docs/API_Spec.md)**
+8. **[docs/API_Spec.md](../docs/API_Spec.md)**
    - API contract by role/module
    - Request/response examples and integration notes
 
-10. **[docs/file-storage.md](../docs/file-storage.md)**
+9. **[docs/file-storage.md](../docs/file-storage.md)**
    - Cloudinary upload-signature flow and upload folders
    - `FileStorageService` usage and metadata lifecycle
 
-11. **[docs/mail.md](../docs/mail.md)**
+10. **[docs/mail.md](../docs/mail.md)**
    - Async mail architecture (Strategy pattern)
    - RabbitMQ routing, retry, and DLQ conventions
 
-12. **[docs/notification.md](../docs/notification.md)**
+11. **[docs/notification.md](../docs/notification.md)**
    - Notification event flow (publish → RabbitMQ → consumer)
    - Persistence (DB) + SSE realtime push (`SseService`) + read/unread APIs
    - SSE endpoint: `GET /notifications/stream` (produces `text/event-stream`)

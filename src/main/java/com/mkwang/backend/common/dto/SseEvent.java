@@ -1,5 +1,6 @@
 package com.mkwang.backend.common.dto;
 
+import com.mkwang.backend.common.sse.SseEventType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,6 +14,6 @@ import lombok.Setter;
 @AllArgsConstructor
 public class SseEvent {
 
-    private String event;
+    private SseEventType event;
     private Object data;
 }

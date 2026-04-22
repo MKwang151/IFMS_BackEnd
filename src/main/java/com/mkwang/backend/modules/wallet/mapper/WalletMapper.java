@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class WalletMapper {
 
-    public WalletResponse toDto(Wallet wallet) {
+    public WalletResponse toWalletResponse(Wallet wallet) {
         return WalletResponse.builder()
                 .id(wallet.getId())
                 .ownerType(wallet.getOwnerType())
@@ -22,7 +22,7 @@ public class WalletMapper {
                 .build();
     }
 
-    public TransactionResponse toDto(Transaction txn) {
+    public TransactionResponse toTransactionResponse(Transaction txn) {
         return TransactionResponse.builder()
                 .id(txn.getId())
                 .transactionCode(txn.getTransactionCode())
@@ -36,7 +36,7 @@ public class WalletMapper {
                 .build();
     }
 
-    public LedgerEntryResponse toDto(LedgerEntry entry) {
+    public LedgerEntryResponse toLedgerEntryResponse(LedgerEntry entry) {
         return LedgerEntryResponse.builder()
                 .id(entry.getId())
                 .transactionCode(entry.getTransaction().getTransactionCode())

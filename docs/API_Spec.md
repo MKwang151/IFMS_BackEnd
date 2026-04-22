@@ -130,6 +130,137 @@ Mọi endpoint chuẩn đều trả `ResponseEntity<ApiResponse<T>>`. Cấu trú
 
 ---
 
+### GET `/users/stream`
+Mở kênh SSE duy nhất sau khi đăng nhập — nhận **tất cả** real-time events của user hiện tại qua một connection.
+
+**Headers:**
+- `Authorization: Bearer <accessToken>`
+- `Accept: text/event-stream`
+
+**Content-Type response:** `text/event-stream`
+
+**Khi nào client mở:** ngay sau khi đăng nhập thành công và có `accessToken`.
+
+**Event types:**
+
+| Event name | Trigger | Payload |
+|---|---|---|
+| `connected` | Khi kết nối thành công | `"SSE connected"` (string) |
+| `wallet.updated` | Số dư ví thay đổi (deposit, withdraw, nhận lương, v.v.) | `WalletResponse` |
+| `transaction.created` | Có giao dịch mới trong ví | `TransactionResponse` |
+| `notification` | Có thông báo mới (request approved/rejected, lương, v.v.) | `NotificationDto` |
+
+**Chi tiết từng event:**
+
+---
+
+**`event: connected`**  
+Gửi ngay khi kết nối thành công. `data` là plain string.
+```text
+event: connected
+data: SSE connected
+```
+
+---
+
+**`event: wallet.updated`**  
+Trigger: số dư ví thay đổi sau bất kỳ write operation nào (deposit, withdraw, nhận lương, chuyển khoản, v.v.).  
+Payload: `WalletResponse` — snapshot số dư mới nhất.
+```text
+event: wallet.updated
+data: {
+  "id": 1,
+  "ownerType": "USER",
+  "ownerId": 1,
+  "balance": 10750000,
+  "lockedBalance": 0,
+  "availableBalance": 10750000
+}
+```
+> `balance`: tổng số dư. `lockedBalance`: số dư đang bị lock (chờ settle). `availableBalance = balance - lockedBalance`.
+
+---
+
+**`event: transaction.created`**  
+Trigger: có giao dịch mới ghi vào ví của user (DEPOSIT, WITHDRAW, PAYSLIP_PAYMENT, ADVANCE_PAYMENT, REVERSAL, v.v.).  
+Payload: `TransactionResponse`.
+```text
+event: transaction.created
+data: {
+  "id": 102,
+  "transactionCode": "TXN-9A33BC21",
+  "amount": 500000,
+  "type": "DEPOSIT",
+  "status": "SUCCESS",
+  "referenceType": "DEPOSIT",
+  "referenceId": 7,
+  "description": "Nap tien qua VNPay - 14081234567890",
+  "createdAt": "2026-04-22T10:05:00"
+}
+```
+> `type`: enum `TransactionType` — `DEPOSIT | WITHDRAW | SYSTEM_TOPUP | DEPT_QUOTA_ALLOCATION | PROJECT_QUOTA_ALLOCATION | PAYSLIP_PAYMENT | ADVANCE_PAYMENT | REVERSAL`.  
+> `referenceType`: enum `ReferenceType` — `DEPOSIT | WITHDRAWAL | REQUEST | PAYSLIP | SYSTEM`. Nullable.  
+> `referenceId`: ID của entity liên quan (DepositLog, WithdrawRequest, Request, Payslip). Nullable.
+
+---
+
+**`event: notification`**  
+Trigger: có thông báo mới tạo cho user (request được duyệt/từ chối, lương được chi trả, v.v.).  
+Payload: `NotificationDto`.
+```text
+event: notification
+data: {
+  "id": 5,
+  "type": "REQUEST_APPROVED",
+  "title": "Request được duyệt",
+  "message": "Request REQ-IT-2604-001 của bạn đã được Team Leader duyệt.",
+  "refId": 101,
+  "refType": "REQUEST",
+  "referenceLink": "/requests/101",
+  "isRead": false,
+  "createdAt": "2026-04-22T09:30:00"
+}
+```
+> `type`: enum `NotificationType` — `SYSTEM | REQUEST_APPROVED | REQUEST_REJECTED | SALARY_PAID | WARN`.  
+> `refType`: `REQUEST | PAYSLIP | PROJECT`. Nullable — `null` với loại `SYSTEM`.  
+> `referenceLink`: deep-link để FE navigate đến entity liên quan. Nullable.
+
+**Client implementation (React/TS với `@microsoft/fetch-event-source`):**
+```ts
+import { fetchEventSource } from "@microsoft/fetch-event-source";
+
+await fetchEventSource("/api/v1/users/stream", {
+  method: "GET",
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "text/event-stream",
+  },
+  onopen(res) {
+    if (!res.ok) throw new Error("Cannot open SSE stream");
+  },
+  onmessage(msg) {
+    switch (msg.event) {
+      case "wallet.updated":
+        updateWalletBalanceUI(JSON.parse(msg.data));
+        break;
+      case "transaction.created":
+        prependTransactionRow(JSON.parse(msg.data));
+        break;
+      case "notification":
+        showToastAndIncreaseBadge(JSON.parse(msg.data));
+        break;
+    }
+  },
+  onerror(err) {
+    throw err; // thư viện tự reconnect
+  },
+});
+```
+
+> **Lưu ý:** Chỉ cần mở 1 kết nối duy nhất cho toàn bộ session. Client phân biệt loại event qua `msg.event` và cập nhật đúng phần UI tương ứng. Khi access token hết hạn, đóng stream và mở lại sau khi refresh token.
+
+---
+
 ### POST `/auth/logout`
 Đăng xuất, vô hiệu hoá refresh token.
 
@@ -465,6 +596,8 @@ Lấy số dư ví của user hiện tại.
 > `lockedBalance`: `wallets.locked_balance` — số dư đã lock/chờ settle.  
 > `availableBalance`: giá trị tính toán `balance - lockedBalance`.
 
+> **Realtime:** Khi số dư thay đổi, server tự push event `wallet.updated` với payload `WalletResponse` qua kênh SSE `GET /users/stream`. Client cập nhật balance UI mà không cần poll lại endpoint này.
+
 ---
 
 ### GET `/wallet/transactions`
@@ -505,6 +638,8 @@ Lịch sử giao dịch ví của user hiện tại, với filter và phân tran
 > `direction`: `DEBIT | CREDIT` (`TransactionDirection`).  
 > `amount`: luôn là giá trị tuyệt đối của bút toán; chiều tăng/giảm được xác định bởi `direction`.  
 > `balanceAfter`: snapshot số dư wallet ngay sau bút toán.
+
+> **Realtime:** Khi có giao dịch mới, server tự push event `transaction.created` với payload `TransactionResponse` qua kênh SSE `GET /users/stream`. Client prepend row mới vào danh sách mà không cần poll lại endpoint này.
 
 ---
 
@@ -844,6 +979,8 @@ Danh sách thông báo của user hiện tại.
 > `refId`: `notifications.ref_id` — ID đối tượng liên quan (BigInt). Nullable.  
 > `refType`: `notifications.ref_type` — `REQUEST | PAYSLIP | PROJECT`. Nullable.  
 > `unreadCount`: COUNT WHERE `is_read = false` — cho badge notification.
+
+> **Realtime:** Khi có thông báo mới, server tự push event `notification` với payload `NotificationDto` qua kênh SSE `GET /users/stream`. Client hiện toast + tăng badge số chưa đọc mà không cần poll lại endpoint này.
 
 ---
 

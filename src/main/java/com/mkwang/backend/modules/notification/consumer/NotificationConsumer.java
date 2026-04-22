@@ -2,6 +2,7 @@ package com.mkwang.backend.modules.notification.consumer;
 
 import com.mkwang.backend.common.exception.InternalSystemException;
 import com.mkwang.backend.common.dto.SseEvent;
+import com.mkwang.backend.common.sse.SseEventType;
 import com.mkwang.backend.common.sse.SseService;
 import com.mkwang.backend.modules.notification.entity.Notification;
 import com.mkwang.backend.modules.notification.entity.NotificationType;
@@ -65,7 +66,7 @@ public class NotificationConsumer {
         // 2. SSE push — best-effort (user có thể offline)
         try {
             sseService.sendToUser(event.userId(), SseEvent.builder()
-                    .event("notification")
+                    .event(SseEventType.NOTIFICATION)
                     .data(notificationMapper.toDto(saved))
                     .build());
             log.debug("[NotificationConsumer] SSE pushed to userId={}", event.userId());

@@ -1,16 +1,16 @@
 package com.mkwang.backend.modules.notification.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
-import com.mkwang.backend.common.sse.SseService;
 import com.mkwang.backend.modules.notification.dto.response.NotificationListResponse;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.notification.dto.response.NotificationDto;
+import com.mkwang.backend.modules.notification.publisher.NotificationEvent;
+import com.mkwang.backend.modules.notification.publisher.NotificationPublisher;
 import com.mkwang.backend.modules.notification.service.NotificationService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,13 +19,7 @@ import org.springframework.web.bind.annotation.*;
 public class NotificationController {
 
     private final NotificationService notificationService;
-    private final SseService sseService;
-
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@AuthenticationPrincipal UserDetailsAdapter principal) {
-        return sseService.connect(principal.getUser().getId());
-    }
-
+    private final NotificationPublisher notificationPublisher;
     /**
      * GET /notifications
      * Lấy danh sách notifications của user hiện tại (mới nhất trước).
@@ -76,5 +70,14 @@ public class NotificationController {
 
         notificationService.markAllAsRead(principal.getUser().getId());
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    @PostMapping("/test")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<String> test(
+            @RequestBody NotificationEvent event
+            ) {
+        notificationPublisher.publish(event);
+        return ResponseEntity.ok("Event published");
     }
 }

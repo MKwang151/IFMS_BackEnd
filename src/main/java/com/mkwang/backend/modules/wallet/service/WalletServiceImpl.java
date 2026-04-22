@@ -1,7 +1,10 @@
 package com.mkwang.backend.modules.wallet.service;
 
 import com.mkwang.backend.common.dto.PageResponse;
+import com.mkwang.backend.common.dto.SseEvent;
 import com.mkwang.backend.common.exception.BadRequestException;
+import com.mkwang.backend.common.sse.SseEventType;
+import com.mkwang.backend.common.sse.SseService;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeGenerator;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
@@ -16,6 +19,7 @@ import com.mkwang.backend.modules.wallet.repository.WalletRepository;
 import com.mkwang.backend.modules.wallet.service.locking.LockedWalletPair;
 import com.mkwang.backend.modules.wallet.service.locking.WalletKey;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +32,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class WalletServiceImpl implements WalletService {
@@ -37,6 +42,7 @@ public class WalletServiceImpl implements WalletService {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final BusinessCodeGenerator codeGenerator;
     private final WalletMapper walletMapper;
+    private final SseService sseService;
 
     // ══════════════════════════════════════════════════════════════════
     //  WRITE OPERATIONS
@@ -64,7 +70,12 @@ public class WalletServiceImpl implements WalletService {
 
         walletRepository.save(source);
         walletRepository.save(dest);
-        return transactionRepository.save(txn);
+        Transaction saved = transactionRepository.save(txn);
+        pushWalletUpdate(fromType, fromId);
+        pushWalletUpdate(toType, toId);
+        pushTransactionHistoryUpdate(fromType, fromId, saved);
+        pushTransactionHistoryUpdate(toType, toId, saved);
+        return saved;
     }
 
     @Override
@@ -74,6 +85,7 @@ public class WalletServiceImpl implements WalletService {
         Wallet wallet = getWalletForUpdate(ownerType, ownerId);
         wallet.lock(amount);
         walletRepository.save(wallet);
+        pushWalletUpdate(ownerType, ownerId);
     }
 
     @Override
@@ -83,6 +95,7 @@ public class WalletServiceImpl implements WalletService {
         Wallet wallet = getWalletForUpdate(ownerType, ownerId);
         wallet.unlock(amount);
         walletRepository.save(wallet);
+        pushWalletUpdate(ownerType, ownerId);
     }
 
     @Override
@@ -107,7 +120,12 @@ public class WalletServiceImpl implements WalletService {
 
         walletRepository.save(source);
         walletRepository.save(dest);
-        return transactionRepository.save(txn);
+        Transaction saved = transactionRepository.save(txn);
+        pushWalletUpdate(fromType, fromId);
+        pushWalletUpdate(toType, toId);
+        pushTransactionHistoryUpdate(fromType, fromId, saved);
+        pushTransactionHistoryUpdate(toType, toId, saved);
+        return saved;
     }
 
     @Override
@@ -156,6 +174,8 @@ public class WalletServiceImpl implements WalletService {
             // FLOAT_MAIN: reverse the boundary effect
             boolean wasInflow = entry.getDirection() == TransactionDirection.CREDIT;
             updateFloatMain(amount, !wasInflow);
+            pushWalletUpdate(wallet.getOwnerType(), wallet.getOwnerId());
+            pushTransactionHistoryUpdate(wallet.getOwnerType(), wallet.getOwnerId(), saved);
             return saved;
         }
 
@@ -191,7 +211,12 @@ public class WalletServiceImpl implements WalletService {
 
         walletRepository.save(originalSource);
         walletRepository.save(originalDest);
-        return transactionRepository.save(reversalTxn);
+        Transaction saved = transactionRepository.save(reversalTxn);
+        pushWalletUpdate(originalSource.getOwnerType(), originalSource.getOwnerId());
+        pushWalletUpdate(originalDest.getOwnerType(), originalDest.getOwnerId());
+        pushTransactionHistoryUpdate(originalSource.getOwnerType(), originalSource.getOwnerId(), saved);
+        pushTransactionHistoryUpdate(originalDest.getOwnerType(), originalDest.getOwnerId(), saved);
+        return saved;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -209,7 +234,9 @@ public class WalletServiceImpl implements WalletService {
                 .ownerType(ownerType)
                 .ownerId(ownerId)
                 .build();
-        return walletMapper.toDto(walletRepository.save(wallet));
+        WalletResponse created = walletMapper.toWalletResponse(walletRepository.save(wallet));
+        pushWalletUpdate(ownerType, ownerId);
+        return created;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -222,7 +249,7 @@ public class WalletServiceImpl implements WalletService {
         Wallet wallet = walletRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet", "owner",
                         ownerType + ":" + ownerId));
-        return walletMapper.toDto(wallet);
+        return walletMapper.toWalletResponse(wallet);
     }
 
     @Override
@@ -245,7 +272,7 @@ public class WalletServiceImpl implements WalletService {
             entries = ledgerEntryRepository.findByWalletIdOrderByCreatedAtDesc(wallet.getId(), pageable);
         }
 
-        return entries.map(walletMapper::toDto);
+        return entries.map(walletMapper::toLedgerEntryResponse);
     }
 
     @Override
@@ -254,7 +281,7 @@ public class WalletServiceImpl implements WalletService {
         return transactionRepository
                 .findByReferenceTypeAndReferenceIdOrderByCreatedAtDesc(refType, refId)
                 .stream()
-                .map(walletMapper::toDto)
+                .map(walletMapper::toTransactionResponse)
                 .toList();
     }
 
@@ -296,7 +323,7 @@ public class WalletServiceImpl implements WalletService {
         Transaction txn = transactionRepository.findOwnedTransactionById(transactionId, wallet.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", "id", transactionId));
 
-        return walletMapper.toDto(txn);
+        return walletMapper.toTransactionResponse(txn);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -419,6 +446,8 @@ public class WalletServiceImpl implements WalletService {
 
         // Money enters system → FLOAT_MAIN +
         updateFloatMain(amount, true);
+        pushWalletUpdate(WalletOwnerType.USER, userId);
+        pushTransactionHistoryUpdate(WalletOwnerType.USER, userId, saved);
         return saved;
     }
 
@@ -448,6 +477,8 @@ public class WalletServiceImpl implements WalletService {
 
         // Money leaves system → FLOAT_MAIN -
         updateFloatMain(amount, false);
+        pushWalletUpdate(WalletOwnerType.USER, userId);
+        pushTransactionHistoryUpdate(WalletOwnerType.USER, userId, saved);
         return saved;
     }
 
@@ -465,6 +496,35 @@ public class WalletServiceImpl implements WalletService {
     @Transactional(readOnly = true)
     public BigDecimal sumAllBalancesExceptFloatMain() {
         return walletRepository.sumAllBalancesExcept(WalletOwnerType.FLOAT_MAIN);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  SSE PUSH (private — best-effort, only for USER wallets)
+    // ══════════════════════════════════════════════════════════════════
+
+    private void pushWalletUpdate(WalletOwnerType ownerType, Long ownerId) {
+        if (ownerType != WalletOwnerType.USER) return;
+        try {
+            walletRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId).ifPresent(wallet ->
+                    sseService.sendToUser(ownerId, SseEvent.builder()
+                            .event(SseEventType.WALLET_UPDATED)
+                            .data(walletMapper.toWalletResponse(wallet))
+                            .build()));
+        } catch (Exception e) {
+            log.warn("[WalletService] SSE wallet push failed for userId={}: {}", ownerId, e.getMessage());
+        }
+    }
+
+    private void pushTransactionHistoryUpdate(WalletOwnerType ownerType, Long ownerId, Transaction txn) {
+        if (ownerType != WalletOwnerType.USER) return;
+        try {
+            sseService.sendToUser(ownerId, SseEvent.builder()
+                    .event(SseEventType.TRANSACTION_CREATED)
+                    .data(walletMapper.toTransactionResponse(txn))
+                    .build());
+        } catch (Exception e) {
+            log.warn("[WalletService] SSE transaction push failed for userId={}: {}", ownerId, e.getMessage());
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════

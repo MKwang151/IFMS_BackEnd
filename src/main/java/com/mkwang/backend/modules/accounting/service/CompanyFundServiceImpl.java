@@ -48,7 +48,7 @@ public class CompanyFundServiceImpl implements CompanyFundService {
                 request.getPaymentRef(),
                 request.getDescription()
         );
-        return walletMapper.toDto(txn);
+        return walletMapper.toTransactionResponse(txn);
     }
 
     @Override

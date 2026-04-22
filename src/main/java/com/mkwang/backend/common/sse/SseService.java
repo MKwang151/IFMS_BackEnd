@@ -3,7 +3,6 @@ package com.mkwang.backend.common.sse;
 import com.mkwang.backend.common.dto.SseEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -16,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SseService {
 
     private static final long SSE_TIMEOUT_MS = 0L;
-    private static final String DEFAULT_EVENT_NAME = "notification";
+    private static final SseEventType DEFAULT_EVENT_TYPE = SseEventType.NOTIFICATION;
 
     private final Map<Long, Map<String, SseEmitter>> userEmitters = new ConcurrentHashMap<>();
 
@@ -34,7 +33,7 @@ public class SseService {
 
         try {
             emitter.send(SseEmitter.event()
-                    .name("connected")
+                    .name(SseEventType.CONNECTED.getValue())
                     .data("SSE connected"));
         } catch (IOException e) {
             removeEmitter(userId, emitterId);
@@ -68,10 +67,10 @@ public class SseService {
     }
 
     private String resolveEventName(SseEvent sseEvent) {
-        if (sseEvent == null || !StringUtils.hasText(sseEvent.getEvent())) {
-            return DEFAULT_EVENT_NAME;
+        if (sseEvent == null || sseEvent.getEvent() == null) {
+            return DEFAULT_EVENT_TYPE.getValue();
         }
-        return sseEvent.getEvent();
+        return sseEvent.getEvent().getValue();
     }
 
     private void removeEmitter(Long userId, String emitterId) {
