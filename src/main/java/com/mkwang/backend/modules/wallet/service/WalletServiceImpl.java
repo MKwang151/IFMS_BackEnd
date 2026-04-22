@@ -518,9 +518,30 @@ public class WalletServiceImpl implements WalletService {
     private void pushTransactionHistoryUpdate(WalletOwnerType ownerType, Long ownerId, Transaction txn) {
         if (ownerType != WalletOwnerType.USER) return;
         try {
+            LedgerEntry ownerEntry = txn.getEntries().stream()
+                    .filter(entry -> entry.getWallet() != null
+                            && entry.getWallet().getOwnerType() == ownerType
+                            && ownerId.equals(entry.getWallet().getOwnerId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (ownerEntry == null && txn.getId() != null) {
+                ownerEntry = ledgerEntryRepository.findByTransactionId(txn.getId()).stream()
+                        .filter(entry -> entry.getWallet() != null
+                                && entry.getWallet().getOwnerType() == ownerType
+                                && ownerId.equals(entry.getWallet().getOwnerId()))
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            if (ownerEntry == null) {
+                log.warn("[WalletService] No ledger entry found for transactionId={} userId={}", txn.getId(), ownerId);
+                return;
+            }
+
             sseService.sendToUser(ownerId, SseEvent.builder()
                     .event(SseEventType.TRANSACTION_CREATED)
-                    .data(walletMapper.toTransactionResponse(txn))
+                    .data(walletMapper.toLedgerEntryResponse(ownerEntry))
                     .build());
         } catch (Exception e) {
             log.warn("[WalletService] SSE transaction push failed for userId={}: {}", ownerId, e.getMessage());
