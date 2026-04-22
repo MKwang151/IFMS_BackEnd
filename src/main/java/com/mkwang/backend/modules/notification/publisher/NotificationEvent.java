@@ -4,7 +4,7 @@ package com.mkwang.backend.modules.notification.publisher;
  * NotificationEvent — payload được serialize qua RabbitMQ.
  *
  * @param userId    ID của người nhận notification
- * @param userEmail Email của người nhận — dùng làm WebSocket principal name khi push
+ * @param userEmail Email của người nhận (legacy field, không còn dùng cho SSE push)
  * @param type      NotificationType.name()
  * @param title     Tiêu đề ngắn gọn
  * @param message   Nội dung chi tiết

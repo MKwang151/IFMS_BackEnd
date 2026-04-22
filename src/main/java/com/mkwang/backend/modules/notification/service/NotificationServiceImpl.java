@@ -1,8 +1,10 @@
 package com.mkwang.backend.modules.notification.service;
 
+import com.mkwang.backend.common.exception.BadRequestException;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.exception.UnauthorizedException;
 import com.mkwang.backend.modules.notification.dto.response.NotificationDto;
+import com.mkwang.backend.modules.notification.dto.response.NotificationListResponse;
 import com.mkwang.backend.modules.notification.entity.Notification;
 import com.mkwang.backend.modules.notification.entity.NotificationType;
 import com.mkwang.backend.modules.notification.mapper.NotificationMapper;
@@ -11,10 +13,13 @@ import com.mkwang.backend.modules.notification.publisher.NotificationPublisher;
 import com.mkwang.backend.modules.notification.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -39,11 +44,53 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('NOTIFICATION_VIEW')")
-    public Page<NotificationDto> getNotifications(Long userId, boolean unreadOnly, Pageable pageable) {
-        Page<Notification> page = unreadOnly
-                ? notificationRepository.findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId, pageable)
-                : notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
-        return page.map(notificationMapper::toDto);
+    public NotificationListResponse getNotifications(Long userId, Boolean isRead, String type, int page, int limit) {
+        int safePage = Math.max(page, 1);
+        int safeLimit = Math.max(limit, 1);
+        Pageable pageable = PageRequest.of(safePage - 1, safeLimit);
+
+        NotificationType parsedType = parseType(type);
+        Page<Notification> resultPage = getFilteredPage(userId, isRead, parsedType, pageable);
+
+        return NotificationListResponse.builder()
+                .items(resultPage.map(notificationMapper::toDto).getContent())
+                .unreadCount(notificationRepository.countByUserIdAndIsReadFalse(userId))
+                .total(resultPage.getTotalElements())
+                .page(safePage)
+                .limit(safeLimit)
+                .totalPages(resultPage.getTotalPages())
+                .build();
+    }
+
+    private Page<Notification> getFilteredPage(Long userId, Boolean isRead, NotificationType type, Pageable pageable) {
+        if (type == null) {
+            if (Boolean.TRUE.equals(isRead)) {
+                return notificationRepository.findByUserIdAndIsReadTrueOrderByCreatedAtDesc(userId, pageable);
+            }
+            if (Boolean.FALSE.equals(isRead)) {
+                return notificationRepository.findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId, pageable);
+            }
+            return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        }
+
+        if (Boolean.TRUE.equals(isRead)) {
+            return notificationRepository.findByUserIdAndTypeAndIsReadTrueOrderByCreatedAtDesc(userId, type, pageable);
+        }
+        if (Boolean.FALSE.equals(isRead)) {
+            return notificationRepository.findByUserIdAndTypeAndIsReadFalseOrderByCreatedAtDesc(userId, type, pageable);
+        }
+        return notificationRepository.findByUserIdAndTypeOrderByCreatedAtDesc(userId, type, pageable);
+    }
+
+    private NotificationType parseType(String type) {
+        if (type == null || type.isBlank()) {
+            return null;
+        }
+        try {
+            return NotificationType.valueOf(type.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Invalid notification type: " + type);
+        }
     }
 
     @Override

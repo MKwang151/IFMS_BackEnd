@@ -23,7 +23,7 @@
 | Messaging | RabbitMQ (AMQP) — email queue + audit queue |
 | Email | Brevo API (transactional email) |
 | File Storage | Cloudinary (upload signature pattern) |
-| WebSocket | Spring WebSocket + STOMP |
+| Realtime | Server-Sent Events (SSE) — `SseService` + `SseEmitter` |
 | Docs | SpringDoc OpenAPI (Swagger UI at `/swagger-ui.html`) |
 | Build | Maven (pom.xml), Lombok |
 
@@ -52,7 +52,7 @@ src/main/java/com/mkwang/backend/
     ├── request/      # Request, History, Attachment, AdvanceBalance
     ├── wallet/       # Wallet, Transaction, LedgerEntry (double-entry)
     ├── accounting/   # Payroll, Payslip, SystemFund
-    ├── notification/ # WebSocket + persistence
+    ├── notification/ # SSE realtime + RabbitMQ consumer + persistence
     └── config/       # SystemConfig
 ```
 
@@ -79,9 +79,22 @@ public ResponseEntity<ApiResponse<UserDto>> getUser(Long id) {
 Không được dùng: void, raw object, List, Page, v.v. — **phải wrap bằng ApiResponse**.
 
 **Pagination convention (bắt buộc):**
-- Mọi response có phân trang phải dùng `com.mkwang.backend.common.dto.PageResponse<T>` làm `data` trong `ApiResponse`.
-- Không tạo DTO phân trang riêng theo module (ví dụ `*PageResponse` custom trong module).
-- Mapping chuẩn: `items`, `total`, `page`, `size`, `totalPages`.
+- **Mọi endpoint có phân trang** phải dùng `com.mkwang.backend.common.dto.PageResponse<T>` làm `data` bên trong `ApiResponse`. Không được tạo DTO phân trang riêng theo module (ví dụ `*PageResponse` custom, `*ListResponse` custom).
+- Fields chuẩn: `items`, `total`, `page`, `size`, `totalPages`.
+- Controller và Service **phải khai báo return type là `PageResponse<XxxResponse>`**, không dùng `Page<T>`, `List<T>`, hay bất kỳ wrapper khác.
+
+```java
+// ✓ CORRECT
+public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> getUsers(
+        @RequestParam(defaultValue = "1") int page,
+        @RequestParam(defaultValue = "20") int size) {
+    PageResponse<UserResponse> result = userService.getUsers(page, size);
+    return ResponseEntity.ok(ApiResponse.success(result));
+}
+
+// ✗ WRONG — không được trả thẳng List hoặc Page
+public ResponseEntity<ApiResponse<List<UserResponse>>> getUsers(...) { ... }
+```
 
 ---
 
@@ -269,6 +282,43 @@ For permission naming convention, see **[docs/rbac-model.md](../docs/rbac-model.
 
 ---
 
+### Realtime Updates — SSE (Server-Sent Events)
+
+**Dự án dùng SSE thay cho WebSocket** cho mọi realtime update từ server → client.
+
+**Không được dùng:** Spring WebSocket, STOMP, SockJS cho bất kỳ realtime feature nào.
+
+**Infrastructure:**
+- `common/sse/SseService.java` — quản lý tất cả `SseEmitter` connections theo `userId`
+- `common/dto/SseEvent.java` — wrapper cho SSE payload (`event`, `data`)
+- Client subscribe tại `GET /notifications/stream` (produces `text/event-stream`)
+
+**Flow chuẩn (notification làm ví dụ):**
+1. Publisher publish `NotificationEvent` lên RabbitMQ queue
+2. `NotificationConsumer` nhận event → **persist vào DB trước**
+3. Sau khi persist thành công → `sseService.sendToUser(userId, SseEvent)` (best-effort)
+4. Nếu SSE push fail (user offline) → bỏ qua, log WARN — notification vẫn còn trong DB
+
+**Convention khi thêm realtime feature mới:**
+- Inject `SseService` vào consumer/service cần push realtime
+- Luôn wrap SSE push trong try-catch, log WARN nếu fail — **không throw exception**
+- Persist state vào DB trước khi push SSE — đảm bảo idempotency khi user reconnect
+
+```java
+// ✓ CORRECT — persist first, SSE push best-effort
+Notification saved = notificationRepository.save(notification);
+try {
+    sseService.sendToUser(userId, SseEvent.builder()
+            .event("notification")
+            .data(mapper.toDto(saved))
+            .build());
+} catch (Exception e) {
+    log.warn("[Consumer] SSE push failed for userId={}: {}", userId, e.getMessage());
+}
+```
+
+---
+
 ### Database Migrations
 
 **Any change affecting schema** (add/drop/rename column, add table, add index, add constraint, change data type) **must come with a new Flyway migration** in `src/main/resources/db/migration/`.
@@ -308,7 +358,7 @@ For domain-specific architecture and conventions, refer to:
 3. **[docs/security-architecture.md](../docs/security-architecture.md)**
    - JWT tokens (access 30m, refresh 7d)
    - Single-session enforcement (token version)
-   - WebSocket authentication
+   - SSE authentication (Bearer token qua query param hoặc header)
    - Audit system (async, Hibernate → RabbitMQ)
    - Mail system (async, Brevo)
 
@@ -349,8 +399,10 @@ For domain-specific architecture and conventions, refer to:
    - RabbitMQ routing, retry, and DLQ conventions
 
 12. **[docs/notification.md](../docs/notification.md)**
-   - Notification event flow (publish/consume)
-   - Persistence + WebSocket realtime + read/unread APIs
+   - Notification event flow (publish → RabbitMQ → consumer)
+   - Persistence (DB) + SSE realtime push (`SseService`) + read/unread APIs
+   - SSE endpoint: `GET /notifications/stream` (produces `text/event-stream`)
+   - Consumer pattern: persist TRƯỚC → SSE push SAU (best-effort, user có thể offline)
 
 ---
 

@@ -2,6 +2,7 @@ package com.mkwang.backend.modules.wallet.controller;
 
 import com.mkwang.backend.common.dto.ApiResponse;
 import com.mkwang.backend.common.dto.PageResponse;
+import com.mkwang.backend.common.sse.SseService;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.wallet.dto.response.LedgerEntryResponse;
 import com.mkwang.backend.modules.wallet.dto.response.TransactionResponse;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDate;
 
@@ -31,6 +34,7 @@ import java.time.LocalDate;
 public class WalletController {
 
     private final WalletService walletService;
+    private final SseService sseService;
 
     @GetMapping
     @SecurityRequirement(name = "bearerAuth")
@@ -39,6 +43,13 @@ public class WalletController {
             @AuthenticationPrincipal UserDetailsAdapter principal) {
         Long userId = principal.getUser().getId();
         return ResponseEntity.ok(ApiResponse.success(walletService.getMyWallet(userId)));
+    }
+
+    @GetMapping(value = "/transactions/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Open SSE stream for real-time wallet transaction updates")
+    public SseEmitter streamMyTransactions(@AuthenticationPrincipal UserDetailsAdapter principal) {
+        return sseService.connect(principal.getUser().getId());
     }
 
     @GetMapping("/transactions")
@@ -65,5 +76,3 @@ public class WalletController {
         return ResponseEntity.ok(ApiResponse.success(walletService.getMyTransaction(userId, transactionId)));
     }
 }
-
-

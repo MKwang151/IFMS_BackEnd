@@ -1,6 +1,8 @@
 package com.mkwang.backend.modules.notification.consumer;
 
 import com.mkwang.backend.common.exception.InternalSystemException;
+import com.mkwang.backend.common.dto.SseEvent;
+import com.mkwang.backend.common.sse.SseService;
 import com.mkwang.backend.modules.notification.entity.Notification;
 import com.mkwang.backend.modules.notification.entity.NotificationType;
 import com.mkwang.backend.modules.notification.mapper.NotificationMapper;
@@ -12,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,10 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
  * NotificationConsumer — nhận NotificationEvent từ RabbitMQ, thực hiện 2 việc:
  * <ol>
  *   <li>Persist vào DB (đảm bảo user offline vẫn nhận được khi online lại)</li>
- *   <li>Push real-time qua WebSocket / STOMP nếu user đang online (best-effort)</li>
+ *   <li>Push real-time qua SSE nếu user đang online (best-effort)</li>
  * </ol>
  *
- * Persist TRƯỚC push — nếu WebSocket fail, notification vẫn còn trong DB.
+ * Persist TRƯỚC push — nếu SSE push fail, notification vẫn còn trong DB.
  */
 @Slf4j
 @Service
@@ -33,7 +34,7 @@ public class NotificationConsumer {
     private final NotificationRepository  notificationRepository;
     private final NotificationMapper      notificationMapper;
     private final UserService             userService;
-    private final SimpMessagingTemplate   messagingTemplate;
+    private final SseService              sseService;
 
     @RabbitListener(queues = "${spring.rabbitmq.notification.queue}", concurrency = "2-5")
     @Transactional
@@ -61,17 +62,16 @@ public class NotificationConsumer {
         log.debug("[NotificationConsumer] Persisted notification id={} type={} userId={}",
                 saved.getId(), event.type(), event.userId());
 
-        // 2. WebSocket push — best-effort (user có thể offline)
+        // 2. SSE push — best-effort (user có thể offline)
         try {
-            messagingTemplate.convertAndSendToUser(
-                    event.userEmail(),
-                    "/queue/notifications",
-                    notificationMapper.toDto(saved)
-            );
-            log.debug("[NotificationConsumer] WebSocket pushed to user={}", event.userEmail());
+            sseService.sendToUser(event.userId(), SseEvent.builder()
+                    .event("notification")
+                    .data(notificationMapper.toDto(saved))
+                    .build());
+            log.debug("[NotificationConsumer] SSE pushed to userId={}", event.userId());
         } catch (Exception e) {
-            log.warn("[NotificationConsumer] WebSocket push failed for user={}: {}",
-                    event.userEmail(), e.getMessage());
+            log.warn("[NotificationConsumer] SSE push failed for userId={}: {}",
+                    event.userId(), e.getMessage());
         }
     }
 
