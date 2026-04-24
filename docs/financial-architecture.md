@@ -145,25 +145,21 @@ Giảm bằng 2 cách:
 ## Request Approval Flows (Segregation of Duties)
 
 ### Flow 1 — Personal Expense (ADVANCE / EXPENSE / REIMBURSE)
-Nguy hiểm cao (chứng từ gốc, dễ gian lận) → **Accountant phải execute** (checkpoint cuối)
+Nguy hiểm cao (chứng từ gốc, dễ gian lận) → vẫn kiểm soát bằng workflow duyệt và audit trail
 
 ```
 Member tạo request (PENDING)
     ↓
 TEAM_LEADER duyệt (DECISION)
     ↓
-APPROVED_BY_TEAM_LEADER
-    ↓
-PENDING_ACCOUNTANT_EXECUTION (chờ Accountant xem chứng từ + click giải ngân)
-    ↓
-ACCOUNTANT execute + giải ngân (EXECUTION)
+APPROVED_BY_TEAM_LEADER   ← Accountant nhìn thấy tại /accountant/disbursements
     ↓
 PAID
 ```
 
 **Trách nhiệm:**
 - TEAM_LEADER: Quyết định approve/reject
-- ACCOUNTANT: Review chứng từ, verify số tiền, check quỹ, rồi execute giải ngân
+- ACCOUNTANT: Thực hiện giải ngân (execute payout) — không quyết định, chỉ execute
 
 **Wallet operation:** `walletService.settleAndTransfer(PROJECT → USER, REQUEST_PAYMENT)`
 
@@ -241,9 +237,8 @@ PUT /api/v1/company-fund/bank-statement  (optional: cập nhật sao kê NH)
 public enum RequestStatus {
     // ─ ADVANCE/EXPENSE/REIMBURSE ─
     PENDING,                        // Member vừa tạo
-    APPROVED_BY_TEAM_LEADER,        // TL duyệt, chờ Accountant execute
-    PENDING_ACCOUNTANT_EXECUTION,   // Chờ Accountant giải ngân
-    PAID,                           // Accountant đã giải ngân
+    APPROVED_BY_TEAM_LEADER,        // TL duyệt, chờ Accountant execute payout
+    PAID,                           // Đã giải ngân
     
     // ─ PROJECT_TOPUP ─
     APPROVED_BY_MANAGER,            // Manager duyệt, chờ auto-pay
@@ -263,7 +258,7 @@ public enum RequestStatus {
 
 | Loại request | Decision (duyệt) | Execution (giải ngân) |
 |---|---|---|
-| ADVANCE/EXPENSE/REIMBURSE | TEAM_LEADER | ACCOUNTANT ✅ |
+| ADVANCE/EXPENSE/REIMBURSE | TEAM_LEADER | Theo workflow thanh toán ✅ |
 | PROJECT_TOPUP | MANAGER | Scheduler (auto) ✅ |
 | DEPARTMENT_TOPUP | CFO | Scheduler (auto) ✅ |
 | SYSTEM_TOPUP | CFO/Accountant | Ngay lập tức (1-step) ✅ |

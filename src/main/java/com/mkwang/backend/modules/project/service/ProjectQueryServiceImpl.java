@@ -8,11 +8,13 @@ import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryOptionResp
 import com.mkwang.backend.modules.project.dto.response.ProjectOptionResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhaseOptionResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhasesResponse;
+import com.mkwang.backend.modules.project.entity.ExpenseCategory;
 import com.mkwang.backend.modules.project.entity.PhaseCategoryBudget;
 import com.mkwang.backend.modules.project.entity.PhaseStatus;
 import com.mkwang.backend.modules.project.entity.Project;
 import com.mkwang.backend.modules.project.entity.ProjectPhase;
 import com.mkwang.backend.modules.project.entity.ProjectStatus;
+import com.mkwang.backend.modules.project.repository.ExpenseCategoryRepository;
 import com.mkwang.backend.modules.project.repository.PhaseCategoryBudgetRepository;
 import com.mkwang.backend.modules.project.repository.ProjectMemberRepository;
 import com.mkwang.backend.modules.project.repository.ProjectPhaseRepository;
@@ -36,6 +38,7 @@ public class ProjectQueryServiceImpl implements ProjectQueryService {
     private final ProjectPhaseRepository projectPhaseRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final PhaseCategoryBudgetRepository phaseCategoryBudgetRepository;
+    private final ExpenseCategoryRepository expenseCategoryRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -98,6 +101,27 @@ public class ProjectQueryServiceImpl implements ProjectQueryService {
                 .toList();
 
         return new ExpenseCategoryListResponse(items);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Project getProjectEntityById(Long projectId) {
+        return projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project", "id", projectId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProjectPhase getPhaseEntityById(Long phaseId) {
+        return projectPhaseRepository.findById(phaseId)
+                .orElseThrow(() -> new ResourceNotFoundException("ProjectPhase", "id", phaseId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExpenseCategory getCategoryEntityById(Long categoryId) {
+        return expenseCategoryRepository.findById(categoryId)
+                .orElseThrow(() -> new ResourceNotFoundException("ExpenseCategory", "id", categoryId));
     }
 
     private ExpenseCategoryOptionResponse toCategoryOption(PhaseCategoryBudget budget) {

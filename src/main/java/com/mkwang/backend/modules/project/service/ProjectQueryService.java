@@ -3,7 +3,10 @@ package com.mkwang.backend.modules.project.service;
 import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryListResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectOptionResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhasesResponse;
+import com.mkwang.backend.modules.project.entity.ExpenseCategory;
 import com.mkwang.backend.modules.project.entity.PhaseStatus;
+import com.mkwang.backend.modules.project.entity.Project;
+import com.mkwang.backend.modules.project.entity.ProjectPhase;
 import com.mkwang.backend.modules.project.entity.ProjectStatus;
 import com.mkwang.backend.modules.user.entity.User;
 
@@ -16,6 +19,12 @@ public interface ProjectQueryService {
     ProjectPhasesResponse getProjectPhases(User currentUser, Long projectId, PhaseStatus status);
 
     ExpenseCategoryListResponse getPhaseCategories(User currentUser, Long phaseId);
+
+    Project getProjectEntityById(Long projectId);
+
+    ProjectPhase getPhaseEntityById(Long phaseId);
+
+    ExpenseCategory getCategoryEntityById(Long categoryId);
 }
 
 

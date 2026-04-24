@@ -4,10 +4,10 @@ package com.mkwang.backend.modules.request.entity;
  * Status lifecycle of a request in the approval workflow (Option 2b+ — Segregation of Duties).
  *
  * Flow 1 — ADVANCE / EXPENSE / REIMBURSE (HIGH RISK):
- *   PENDING → APPROVED_BY_TEAM_LEADER → PENDING_ACCOUNTANT_EXECUTION → PAID
+ *   PENDING → APPROVED_BY_TEAM_LEADER → PAID
  *         ↘ REJECTED
  *         ↘ CANCELLED (only while PENDING)
- *   Accountant phải execute giải ngân (checkpoint cuối vì có chứng từ gốc).
+ *   Sau khi TEAM_LEADER duyệt, request được xử lý thanh toán theo luồng nghiệp vụ hiện tại.
  *
  * Flow 2 — PROJECT_TOPUP (MEDIUM RISK):
  *   PENDING → APPROVED_BY_MANAGER → [Auto-pay scheduler] → PAID
@@ -19,7 +19,7 @@ package com.mkwang.backend.modules.request.entity;
  *         ↘ REJECTED
  *   Không cần Accountant duyệt (chỉ ghi sổ post-facto).
  *
- * Segregation of Duties: Decision (duyệt) ≠ Execution (giải ngân)
+ * Segregation of Duties: Decision (duyệt) tách biệt theo từng flow.
  */
 public enum RequestStatus {
 
@@ -29,10 +29,7 @@ public enum RequestStatus {
 
   // ─ Flow 1: ADVANCE/EXPENSE/REIMBURSE ─
   APPROVED_BY_TEAM_LEADER,
-  // TEAM_LEADER đã duyệt, chờ Accountant execute (giải ngân + review chứng từ)
-
-  PENDING_ACCOUNTANT_EXECUTION,
-  // Flow 1 only — chờ Accountant kiểm tra chứng từ và click "giải ngân"
+  // TEAM_LEADER đã duyệt, chờ xử lý thanh toán theo flow
 
   // ─ Flow 2: PROJECT_TOPUP ─
   APPROVED_BY_MANAGER,
@@ -44,7 +41,7 @@ public enum RequestStatus {
 
   // ─ Terminal states ─
   PAID,
-  // Đã giải ngân (Flow 1: Accountant executed, Flow 2/3: auto-paid)
+  // Đã giải ngân
 
   REJECTED,
   // Bị từ chối bởi approver (TL/Manager/CFO) hoặc Accountant (Flow 1 only)

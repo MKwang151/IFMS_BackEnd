@@ -97,6 +97,80 @@ public ResponseEntity<ApiResponse<List<UserResponse>>> getUsers(...) { ... }
 
 ---
 
+### Dynamic Filtering — Specification (bắt buộc cho pagination có filter)
+
+**Mọi pagination endpoint có từ 2 filter trở lên** phải dùng `JpaSpecificationExecutor` + một class `XxxSpecification` riêng.
+
+**Không được dùng:** `@Query` với `(:param IS NULL OR ...)` trick, inline predicate list trong service, hoặc nhiều repository method cho từng tổ hợp filter.
+
+**Cấu trúc bắt buộc:**
+
+**1. Repository** — extends thêm `JpaSpecificationExecutor<Entity>`:
+```java
+@Repository
+public interface RequestRepository
+        extends JpaRepository<Request, Long>, JpaSpecificationExecutor<Request> { }
+```
+
+**2. Specification class** — đặt trong `modules/{module}/repository/`, tên `XxxSpecification`:
+- Mỗi predicate là một **pure static method** — không chứa null-check bên trong
+- Method `filter(...)` là **combiner duy nhất** — chịu trách nhiệm null-check và compose các predicate bằng `Specification.where().and()`
+
+```java
+// modules/request/repository/RequestSpecification.java
+public class RequestSpecification {
+
+   private RequestSpecification() {}
+
+   public static Specification<Request> hasRequester(Long userId) {
+      return (root, query, cb) -> cb.equal(root.get("requester").get("id"), userId);
+   }
+
+   public static Specification<Request> hasType(RequestType type) {
+      return (root, query, cb) ->
+              type == null ? null : cb.equal(root.get("type"), type);
+   }
+
+   public static Specification<Request> hasStatus(RequestStatus status) {
+      return (root, query, cb) ->
+              status == null ? null : cb.equal(root.get("status"), status);
+   }
+
+   public static Specification<Request> matchesSearch(String search) {
+      return (root, query, cb) -> {
+         if (search == null || search.isBlank()) return null;
+         String pattern = "%" + search.toLowerCase() + "%";
+         return cb.or(
+                 cb.like(cb.lower(root.get("requestCode")), pattern),
+                 cb.like(cb.lower(root.get("description")), pattern)
+         );
+      };
+   }
+
+   public static Specification<Request> filter (Long userId, RequestType type, RequestStatus status, String search) {
+      return Specification.where(hasRequester(userId))
+              .and(hasType(type))
+              .and(hasStatus(status))
+              .and(matchesSearch(search));
+   }
+}
+```
+
+**3. Service** — gọi `filter(...)` để lấy `Specification`, assign vào biến, rồi truyền vào `findAll`:
+```java
+// ✓ CORRECT
+Specification<Request> spec = RequestSpecification.filter(userId, type, status, search);
+Page<RequestSummaryResponse> result = requestRepository.findAll(spec, pageable)
+        .map(requestMapper::toSummaryResponse);
+
+// ✗ WRONG — không chain predicates trực tiếp trong service
+Specification<Request> spec = Specification
+        .where(RequestSpecification.hasType(type))
+        .and(RequestSpecification.hasStatus(status));
+```
+
+---
+
 ### Exception Handling
 
 **KHÔNG ĐƯỢC throw:** `RuntimeException`, `IllegalArgumentException`, `IllegalStateException`, `UnsupportedOperationException`, hay bất kỳ raw exception nào.
