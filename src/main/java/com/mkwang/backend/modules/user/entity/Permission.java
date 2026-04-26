@@ -7,12 +7,12 @@ import lombok.RequiredArgsConstructor;
  * System permissions used for Dynamic RBAC.
  *
  * Role → Permission mapping overview:
- *   EMPLOYEE    : personal profile, wallet, project view, request create/view
- *   TEAM_LEADER : + approve Flow 1, manage project budget/phase/members
- *   MANAGER     : + create/manage projects, approve Flow 2, dept dashboard
- *   ACCOUNTANT  : + payout, payroll, system fund
- *   CFO         : financial governance — approve Flow 3, fund top-up, global dashboard
- *   ADMIN       : system configuration & IAM only — no financial approvals
+ * EMPLOYEE : personal profile, wallet, project view, request create/view
+ * TEAM_LEADER : + approve Flow 1, manage project budget/phase/members
+ * MANAGER : + create/manage projects, approve Flow 2, dept dashboard
+ * ACCOUNTANT : + payout, payroll, system fund
+ * CFO : financial governance — approve Flow 3, fund top-up, global dashboard
+ * ADMIN : system configuration & IAM only — no financial approvals
  */
 @Getter
 @RequiredArgsConstructor
@@ -47,6 +47,7 @@ public enum Permission {
   // 4. WALLET RISK CONTROL (Accountant / CFO)
   // ================================================================
   TRANSACTION_APPROVE_WITHDRAW("Duyệt lệnh rút tiền lớn hoặc bị treo (Pending)"),
+  WALLET_VIEW_ALL("Xem số dư và lịch sử giao dịch của mọi loại ví (PROJECT, DEPARTMENT, COMPANY_FUND)"),
 
   // ================================================================
   // 5. PROJECT (read — Employee+; write — Team Leader / Manager)
@@ -67,9 +68,9 @@ public enum Permission {
 
   // ================================================================
   // 6. REQUEST FLOW
-  //    Flow 1 (ADVANCE/EXPENSE/REIMBURSE) : Member → Team Leader → Accountant
-  //    Flow 2 (PROJECT_TOPUP)             : Team Leader → Manager  → Auto
-  //    Flow 3 (DEPARTMENT_TOPUP)          : Manager    → CFO       → Auto
+  // Flow 1 (ADVANCE/EXPENSE/REIMBURSE) : Member → Team Leader → Accountant
+  // Flow 2 (PROJECT_TOPUP) : Team Leader → Manager → Auto
+  // Flow 3 (DEPARTMENT_TOPUP) : Manager → CFO → Auto
   // ================================================================
   REQUEST_CREATE("Tạo yêu cầu chi / ứng / hoàn ứng & upload chứng từ"),
   REQUEST_VIEW_SELF("Xem danh sách & trạng thái yêu cầu của chính mình"),

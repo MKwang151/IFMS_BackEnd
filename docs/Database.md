@@ -200,14 +200,21 @@ Relationship purpose:
 ### 4.11 `expense_categories`
 
 Purpose: expense classification used by requests and budget control.
+Categories are either **system-wide** (`project_id IS NULL`, seeded, not deletable) or **project-specific** (`project_id IS NOT NULL`, created by Team Leader for a single project).
 
 | Column | Type | Meaning |
 |---|---|---|
 | `id` | BIGINT PK | Category id. |
-| `name` | VARCHAR(255), UNIQUE | Category key/name. |
+| `name` | VARCHAR(255) | Category key/name. |
 | `description` | TEXT | Category explanation. |
-| `is_system_default` | BOOLEAN | Seeded default category flag. |
+| `is_system_default` | BOOLEAN | True for seeded categories — cannot be deleted. |
+| `project_id` | BIGINT FK -> `projects.id`, nullable | Null = system-wide; non-null = visible only within this project. |
 | `created_at`, `updated_at`, `created_by`, `updated_by` | Metadata | Ownership/audit fields. |
+
+Indexes/constraints:
+- `uidx_expense_cat_name_system` — unique `name` where `project_id IS NULL` (system categories cannot share names).
+- `uidx_expense_cat_name_project` — unique `(name, project_id)` where `project_id IS NOT NULL` (unique name within each project).
+- The old global `UNIQUE (name)` constraint (`uc_expense_categories_name`) was dropped in V14.
 
 ### 4.12 `phase_category_budgets`
 
@@ -491,6 +498,8 @@ Purpose: key-value configuration store managed in DB.
   - Purpose: phase lifecycle attached to one project.
 - `project_members.project_id -> projects.id`, `project_members.user_id -> users.id`
   - Purpose: many-to-many staffing model.
+- `expense_categories.project_id -> projects.id` (nullable)
+  - Purpose: scope a custom category to one project. Null = system-wide (all projects can use it).
 - `phase_category_budgets.phase_id -> project_phases.id`, `phase_category_budgets.category_id -> expense_categories.id`
   - Purpose: spending limit per category inside a phase.
 - `requests.requester_id -> users.id`

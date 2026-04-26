@@ -261,6 +261,107 @@ await fetchEventSource("/api/v1/users/stream", {
 
 ---
 
+### GET `/users/project/{projectId}/stream`
+Mở kênh SSE chuyên dụng cho **Project Wallet** — nhận `wallet.updated` và `transaction.created` khi ví dự án thay đổi. Dành riêng cho **Team Leader**.
+
+**Headers:**
+- `Authorization: Bearer <accessToken>`
+- `Accept: text/event-stream`
+
+**Path params:** `projectId` (Long, bắt buộc)
+
+**Auth:** `REQUEST_APPROVE_TEAM_LEADER` (Team Leader only)
+
+**Content-Type response:** `text/event-stream`
+
+**Event types:**
+
+| Event name | Trigger | Payload |
+|---|---|---|
+| `connected` | Khi kết nối thành công | `"SSE connected for wallet PROJECT:{projectId}"` (string) |
+| `wallet.updated` | Số dư project wallet thay đổi | `WalletResponse` với `ownerType: "PROJECT"` |
+| `transaction.created` | Có giao dịch mới trong project wallet | `LedgerEntryResponse` |
+
+```text
+event: wallet.updated
+data: {
+  "id": 5,
+  "ownerType": "PROJECT",
+  "ownerId": 1,
+  "balance": 95500000,
+  "lockedBalance": 5000000,
+  "availableBalance": 90500000
+}
+```
+
+> **Trigger:** Khi Manager approve `PROJECT_TOPUP` (tiền vào project), hoặc Accountant giải ngân `ADVANCE/EXPENSE` (tiền ra project).  
+> **Isolation:** Chỉ emitter đã subscribe `PROJECT:{projectId}` nhận event này — không bị pha trộn với `/users/stream`.  
+> **Sử dụng:** TL mở 1 kết nối riêng cho từng project dashboard cần theo dõi real-time.
+
+---
+
+### GET `/users/department/{departmentId}/stream`
+Mở kênh SSE chuyên dụng cho **Department Wallet** — nhận `wallet.updated` và `transaction.created` khi ví phòng ban thay đổi. Dành riêng cho **Manager**.
+
+**Headers:**
+- `Authorization: Bearer <accessToken>`
+- `Accept: text/event-stream`
+
+**Path params:** `departmentId` (Long, bắt buộc)
+
+**Auth:** `REQUEST_APPROVE_PROJECT_TOPUP` (Manager only)
+
+**Content-Type response:** `text/event-stream`
+
+**Event types:**
+
+| Event name | Trigger | Payload |
+|---|---|---|
+| `connected` | Khi kết nối thành công | `"SSE connected for wallet DEPARTMENT:{departmentId}"` (string) |
+| `wallet.updated` | Số dư department wallet thay đổi | `WalletResponse` với `ownerType: "DEPARTMENT"` |
+| `transaction.created` | Có giao dịch mới trong department wallet | `LedgerEntryResponse` |
+
+```text
+event: wallet.updated
+data: {
+  "id": 2,
+  "ownerType": "DEPARTMENT",
+  "ownerId": 1,
+  "balance": 100000000,
+  "lockedBalance": 0,
+  "availableBalance": 100000000
+}
+```
+
+> **Trigger:** Khi CFO approve `DEPARTMENT_TOPUP` (tiền vào), hoặc Manager approve `PROJECT_TOPUP` (tiền ra).  
+> **Isolation:** Chỉ emitter đã subscribe `DEPARTMENT:{departmentId}` nhận event này — không bị pha trộn với `/users/stream`.
+
+---
+
+### GET `/users/company-fund/stream`
+Mở kênh SSE chuyên dụng cho **Company Fund Wallet** — nhận `wallet.updated` và `transaction.created` khi quỹ công ty thay đổi. Dành cho **CFO** và **Accountant**.
+
+**Headers:**
+- `Authorization: Bearer <accessToken>`
+- `Accept: text/event-stream`
+
+**Auth:** `WALLET_VIEW_ALL` (CFO, Accountant)
+
+**Content-Type response:** `text/event-stream`
+
+**Event types:**
+
+| Event name | Trigger | Payload |
+|---|---|---|
+| `connected` | Khi kết nối thành công | `"SSE connected for wallet COMPANY_FUND:1"` (string) |
+| `wallet.updated` | Số dư company fund thay đổi | `WalletResponse` với `ownerType: "COMPANY_FUND"` |
+| `transaction.created` | Có giao dịch mới trong company fund | `LedgerEntryResponse` |
+
+> **Trigger:** Khi `SYSTEM_TOPUP` (nạp tiền từ ngân hàng, tiền vào), `DEPT_QUOTA_ALLOCATION` (CFO cấp quota phòng ban, tiền ra), hoặc `PAYSLIP_PAYMENT` (chi lương, tiền ra).  
+> **Isolation:** Chỉ emitter đã subscribe `COMPANY_FUND:1` nhận event này.
+
+---
+
 ### POST `/auth/logout`
 Đăng xuất, vô hiệu hoá refresh token.
 
@@ -1020,48 +1121,53 @@ Danh sách thông báo của user hiện tại.
 ### GET `/requests`
 Danh sách requests của employee hiện tại.
 
-**Params:** `?type=ADVANCE|EXPENSE|REIMBURSE|PROJECT_TOPUP|QUOTA_TOPUP&status=PENDING_APPROVAL|PENDING_ACCOUNTANT|APPROVED|PAID|REJECTED|CANCELLED&search=string&page=1&limit=20`
+**Params:** `?type=ADVANCE|EXPENSE|REIMBURSE|PROJECT_TOPUP|DEPARTMENT_TOPUP&status=PENDING|APPROVED_BY_TEAM_LEADER|APPROVED_BY_MANAGER|APPROVED_BY_CFO|PAID|REJECTED|CANCELLED&search=string&page=1&limit=20`
 
 **DB mapping:** `requests` WHERE `requester_id = currentUser.id` JOIN `projects` JOIN `project_phases` LEFT JOIN `expense_categories`.
 
 **Response:**
 ```json
 {
-  "items": [
-    {
-      "id": 101,
-      "requestCode": "REQ-IT-2602-001",
-      "type": "ADVANCE",
-      "status": "PENDING_APPROVAL",
-      "amount": 5000000,
-      "approvedAmount": null,
-      "description": "Advance payment for development team travel expenses",
-      "rejectReason": null,
-      "projectId": 1,
-      "projectName": "E-Commerce Platform",
-      "phaseId": 2,
-      "phaseName": "Phase 2: Payment Integration",
-      "categoryId": 1,
-      "categoryName": "Travel & Accommodation",
-      "createdAt": "2026-02-15T09:30:00",
-      "updatedAt": "2026-02-15T09:30:00"
-    }
-  ],
-  "total": 24,
-  "page": 1,
-  "limit": 20,
-  "totalPages": 2
+  "success": true,
+  "message": "Success",
+  "data": {
+    "items": [
+      {
+        "id": 101,
+        "requestCode": "REQ-IT-2602-001",
+        "type": "ADVANCE",
+        "status": "PENDING",
+        "amount": 5000000,
+        "approvedAmount": null,
+        "description": "Advance payment for development team travel expenses",
+        "rejectReason": null,
+        "projectId": 1,
+        "projectName": "E-Commerce Platform",
+        "phaseId": 2,
+        "phaseName": "Phase 2: Payment Integration",
+        "categoryId": 1,
+        "categoryName": "Travel & Accommodation",
+        "createdAt": "2026-02-15T09:30:00",
+        "updatedAt": "2026-02-15T09:30:00"
+      }
+    ],
+    "total": 24,
+    "page": 1,
+    "size": 20,
+    "totalPages": 2
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 > `id`: `requests.id` (Long).  
 > `requestCode`: `requests.request_code` — auto-generated, format `REQ-{DEPT}-{MMYY}-{SEQ}`.  
-> `type`: `requests.type` — `ADVANCE | EXPENSE | REIMBURSE | PROJECT_TOPUP | QUOTA_TOPUP`.  
-> `status`: `requests.status` — `PENDING_APPROVAL | PENDING_ACCOUNTANT | APPROVED | PAID | REJECTED | CANCELLED`.  
+> `type`: `requests.type` — `ADVANCE | EXPENSE | REIMBURSE | PROJECT_TOPUP | DEPARTMENT_TOPUP`.  
+> `status`: `requests.status` — `PENDING | APPROVED_BY_TEAM_LEADER | APPROVED_BY_MANAGER | APPROVED_BY_CFO | PAID | REJECTED | CANCELLED`.  
 > `amount` / `approvedAmount`: `requests.amount` / `requests.approved_amount`. `approvedAmount` nullable nếu chưa duyệt.  
 > `rejectReason`: `requests.reject_reason`. Nullable.  
-> `projectId` / `projectName`: join `projects`. Nullable cho QUOTA_TOPUP.  
-> `phaseId` / `phaseName`: join `project_phases`. Nullable cho PROJECT_TOPUP/QUOTA_TOPUP.  
-> `categoryId` / `categoryName`: join `expense_categories`. Nullable cho PROJECT_TOPUP/QUOTA_TOPUP.  
+> `projectId` / `projectName`: join `projects`. Nullable cho `DEPARTMENT_TOPUP`.  
+> `phaseId` / `phaseName`: join `project_phases`. Nullable cho `PROJECT_TOPUP`/`DEPARTMENT_TOPUP`.  
+> `categoryId` / `categoryName`: join `expense_categories`. Nullable cho `PROJECT_TOPUP`/`DEPARTMENT_TOPUP`.  
 > `createdAt` / `updatedAt`: từ `BaseEntity`.
 
 ---
@@ -1072,34 +1178,48 @@ Tổng hợp số lượng request theo trạng thái của user hiện tại, r
 **Response (EMPLOYEE):**
 ```json
 {
-  "totalPendingApproval": 2,
-  "totalPendingAccountant": 1,
-  "totalApproved": 12,
-  "totalRejected": 2,
-  "totalPaid": 8,
-  "totalCancelled": 1
+  "success": true,
+  "message": "Success",
+  "data": {
+    "totalPendingApproval": 2,
+    "totalApproved": 12,
+    "totalRejected": 2,
+    "totalPaid": 8,
+    "totalCancelled": 1
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 
 **Response (TEAM_LEADER):**
 ```json
 {
-  "totalPendingManagerApproval": 2,
-  "totalApproved": 12,
-  "totalRejected": 2,
-  "totalPaid": 8,
-  "totalCancelled": 1
+  "success": true,
+  "message": "Success",
+  "data": {
+    "totalPendingManagerApproval": 2,
+    "totalApproved": 12,
+    "totalRejected": 2,
+    "totalPaid": 8,
+    "totalCancelled": 1
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 
 **Response (MANAGER):**
 ```json
 {
-  "totalPendingCfoApproval": 2,
-  "totalApproved": 12,
-  "totalRejected": 2,
-  "totalPaid": 8,
-  "totalCancelled": 1
+  "success": true,
+  "message": "Success",
+  "data": {
+    "totalPendingCfoApproval": 2,
+    "totalApproved": 12,
+    "totalRejected": 2,
+    "totalPaid": 8,
+    "totalCancelled": 1
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 
@@ -1107,7 +1227,7 @@ Tổng hợp số lượng request theo trạng thái của user hiện tại, r
 
 ---
 
-### GET `/requests/:id`
+### GET `/requests/{id}`
 Chi tiết một request (employee chỉ xem request của mình).
 
 **DB mapping:** `requests` JOIN `projects` JOIN `project_phases` LEFT JOIN `expense_categories` + sub-query `request_attachments` → `file_storages` + sub-query `request_histories`.
@@ -1115,54 +1235,61 @@ Chi tiết một request (employee chỉ xem request của mình).
 **Response:**
 ```json
 {
-  "id": 101,
-  "requestCode": "REQ-IT-2602-001",
-  "type": "ADVANCE",
-  "status": "PENDING_APPROVAL",
-  "amount": 5000000,
-  "approvedAmount": null,
-  "description": "Advance payment for development team travel expenses",
-  "rejectReason": null,
-  "projectId": 1,
-  "projectCode": "PRJ-ERP-2026",
-  "projectName": "E-Commerce Platform",
-  "phaseId": 2,
-  "phaseCode": "PH-PAY-01",
-  "phaseName": "Phase 2: Payment Integration",
-  "categoryId": 1,
-  "categoryName": "Travel & Accommodation",
-  "requesterId": 1,
-  "requesterName": "Nguyen Van A",
-  "attachments": [
-    {
-      "fileId": 10,
-      "fileName": "Travel_Itinerary.pdf",
-      "cloudinaryPublicId": "requests/file_adv_001",
-      "url": "https://res.cloudinary.com/.../signed...",
-      "fileType": "application/pdf",
-      "size": 156789
-    }
-  ],
-  "timeline": [
-    {
-      "id": 1,
-      "action": "APPROVE",
-      "statusAfterAction": "PENDING_ACCOUNTANT",
-      "actorId": 8,
-      "actorName": "Le Van Minh",
-      "comment": "Approved",
-      "createdAt": "2026-02-16T10:30:00"
-    }
-  ],
-  "createdAt": "2026-02-15T09:30:00",
-  "updatedAt": "2026-02-15T09:30:00"
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": 101,
+    "requestCode": "REQ-IT-2602-001",
+    "type": "ADVANCE",
+    "status": "PENDING",
+    "amount": 5000000,
+    "approvedAmount": null,
+    "description": "Advance payment for development team travel expenses",
+    "rejectReason": null,
+    "paidAt": null,
+    "projectId": 1,
+    "projectCode": "PRJ-ERP-2026",
+    "projectName": "E-Commerce Platform",
+    "phaseId": 2,
+    "phaseCode": "PH-PAY-01",
+    "phaseName": "Phase 2: Payment Integration",
+    "categoryId": 1,
+    "categoryName": "Travel & Accommodation",
+    "advanceBalanceId": null,
+    "requesterId": 1,
+    "requesterName": "Nguyen Van A",
+    "attachments": [
+      {
+        "fileId": 10,
+        "fileName": "Travel_Itinerary.pdf",
+        "cloudinaryPublicId": "requests/file_adv_001",
+        "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/file_adv_001.pdf",
+        "fileType": "application/pdf",
+        "size": 156789
+      }
+    ],
+    "timeline": [
+      {
+        "id": 1,
+        "action": "APPROVE",
+        "statusAfterAction": "APPROVED_BY_TEAM_LEADER",
+        "actorId": 8,
+        "actorName": "Le Van Minh",
+        "comment": "Approved",
+        "createdAt": "2026-02-16T10:30:00"
+      }
+    ],
+    "createdAt": "2026-02-15T09:30:00",
+    "updatedAt": "2026-02-15T09:30:00"
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
-> `attachments[]`: join `request_attachments` → `file_storages`. `url` là Signed URL Cloudinary (15 phút).  
+> `attachments[]`: join `request_attachments` → `file_storages`. `url` trả theo giá trị lưu DB (đã chuyển qua public URL, không signed bắt buộc).  
 > `timeline[]`: từ `request_histories`. `action`: `RequestAction` enum — `APPROVE | REJECT | PAYOUT | CANCEL`.  
-> `statusAfterAction`: Snapshot trạng thái Request SAU khi action. Values: `PENDING_APPROVAL | PENDING_ACCOUNTANT | APPROVED | PAID | REJECTED | CANCELLED`.  
+> `statusAfterAction`: Snapshot trạng thái Request SAU khi action. Values: `PENDING | APPROVED_BY_TEAM_LEADER | APPROVED_BY_MANAGER | APPROVED_BY_CFO | PAID | REJECTED | CANCELLED`.  
 > `actorId` / `actorName`: join `users` qua `request_histories.actor_id`.  
-> `categoryId` / `categoryName`: BẮT BUỘC cho ADVANCE/EXPENSE/REIMBURSE. NULL cho PROJECT_TOPUP/QUOTA_TOPUP.
+> `categoryId` / `categoryName`: BẮT BUỘC cho ADVANCE/EXPENSE/REIMBURSE. NULL cho PROJECT_TOPUP/DEPARTMENT_TOPUP.
 
 ---
 
@@ -1243,48 +1370,61 @@ Tạo request mới. Backend auto-generate `requestCode`. Trạng thái khởi t
 **Status transition sau khi tạo:**
 - Bắt đầu: `PENDING`
 - Flow 1: `PENDING -> APPROVED_BY_TEAM_LEADER -> PAID`
-- Flow 2: `PENDING -> APPROVED_BY_MANAGER -> PAID` (scheduler auto-pay)
+- Flow 2: `PENDING -> APPROVED_BY_MANAGER -> PAID` (đồng bộ trong cùng transaction — không qua scheduler)
 - Flow 3: `PENDING -> APPROVED_BY_CFO -> PAID` (scheduler auto-pay)
 - Terminal states: `REJECTED`, `CANCELLED`
 
 **Response:**
 ```json
 {
-  "id": 102,
-  "requestCode": "REQ-IT-2602-002",
-  "type": "ADVANCE",
-  "status": "PENDING",
-  "amount": 5000000,
-  "approvedAmount": null,
-  "rejectReason": null,
-  "description": "Advance for development tools Q1",
-  "paidAt": null,
-  "projectId": 1,
-  "phaseId": 2,
-  "categoryId": 1,
-  "advanceBalanceId": null,
-  "requesterId": 1,
-  "attachments": [
-    {
-      "fileName": "tool_invoice.pdf",
-      "cloudinaryPublicId": "requests/file_tool_001",
-      "url": "https://res.cloudinary.com/.../signed...",
-      "fileType": "application/pdf",
-      "size": 120000
-    }
-  ],
-  "timeline": [],
-  "createdAt": "2026-02-24T09:00:00",
-  "updatedAt": "2026-02-24T09:00:00"
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": 102,
+    "requestCode": "REQ-IT-2602-002",
+    "type": "ADVANCE",
+    "status": "PENDING",
+    "amount": 5000000,
+    "approvedAmount": null,
+    "rejectReason": null,
+    "description": "Advance for development tools Q1",
+    "paidAt": null,
+    "projectId": 1,
+    "projectCode": "PRJ-ERP-2026",
+    "projectName": "E-Commerce Platform",
+    "phaseId": 2,
+    "phaseCode": "PH-PAY-01",
+    "phaseName": "Phase 2: Payment Integration",
+    "categoryId": 1,
+    "categoryName": "Travel & Accommodation",
+    "advanceBalanceId": null,
+    "requesterId": 1,
+    "requesterName": "Nguyen Van A",
+    "attachments": [
+      {
+        "fileId": 10,
+        "fileName": "tool_invoice.pdf",
+        "cloudinaryPublicId": "requests/file_tool_001",
+        "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/file_tool_001.pdf",
+        "fileType": "application/pdf",
+        "size": 120000
+      }
+    ],
+    "timeline": [],
+    "createdAt": "2026-02-24T09:00:00",
+    "updatedAt": "2026-02-24T09:00:00"
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 
 > Response bám theo domain model `Request`: `id`, `requestCode`, `type`, `status`, `amount`, `approvedAmount`, `rejectReason`, `description`, `paidAt`, các FK liên quan (`projectId`, `phaseId`, `categoryId`, `advanceBalanceId`), `attachments`, `timeline`, `createdAt`, `updatedAt`.
+> HTTP status thực tế: `201 Created`.
 
 ---
 
-### PUT `/requests/:id`
-Chỉnh sửa request. Chỉ cho phép khi `status = PENDING_APPROVAL`. Chỉ owner (requester) được sửa.
+### PUT `/requests/{id}`
+Chỉnh sửa request. Chỉ cho phép khi `status = PENDING`. Chỉ owner (requester) được sửa.
 
 **Body:**
 ```json
@@ -1314,52 +1454,71 @@ Chỉnh sửa request. Chỉ cho phép khi `status = PENDING_APPROVAL`. Chỉ ow
 **Response:**
 ```json
 {
-  "id": 101,
-  "requestCode": "REQ-IT-2602-001",
-  "type": "ADVANCE",
-  "status": "PENDING_APPROVAL",
-  "amount": 5000000,
-  "approvedAmount": null,
-  "description": "Updated description",
-  "rejectReason": null,
-  "projectId": 1,
-  "projectCode": "PRJ-ERP-2026",
-  "projectName": "E-Commerce Platform",
-  "phaseId": 2,
-  "phaseCode": "PH-PAY-01",
-  "phaseName": "Phase 2: Payment Integration",
-  "categoryId": 1,
-  "categoryName": "Travel & Accommodation",
-  "requesterId": 1,
-  "requesterName": "Nguyen Van A",
-  "attachments": [
-    {
-      "fileName": "Travel_Itinerary.pdf",
-      "cloudinaryPublicId": "requests/file_adv_001",
-      "url": "https://res.cloudinary.com/.../signed...",
-      "fileType": "application/pdf",
-      "size": 156789
-    },
-    {
-      "fileName": "Receipt_updated.jpg",
-      "cloudinaryPublicId": "requests/file_adv_012",
-      "url": "https://res.cloudinary.com/.../signed...",
-      "fileType": "image/jpeg",
-      "size": 89000
-    }
-  ],
-  "timeline": [],
-  "createdAt": "2026-02-15T09:30:00",
-  "updatedAt": "2026-02-24T11:00:00"
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": 101,
+    "requestCode": "REQ-IT-2602-001",
+    "type": "ADVANCE",
+    "status": "PENDING",
+    "amount": 5000000,
+    "approvedAmount": null,
+    "description": "Updated description",
+    "rejectReason": null,
+    "paidAt": null,
+    "projectId": 1,
+    "projectCode": "PRJ-ERP-2026",
+    "projectName": "E-Commerce Platform",
+    "phaseId": 2,
+    "phaseCode": "PH-PAY-01",
+    "phaseName": "Phase 2: Payment Integration",
+    "categoryId": 1,
+    "categoryName": "Travel & Accommodation",
+    "advanceBalanceId": null,
+    "requesterId": 1,
+    "requesterName": "Nguyen Van A",
+    "attachments": [
+      {
+        "fileId": 10,
+        "fileName": "Travel_Itinerary.pdf",
+        "cloudinaryPublicId": "requests/file_adv_001",
+        "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/file_adv_001.pdf",
+        "fileType": "application/pdf",
+        "size": 156789
+      },
+      {
+        "fileId": 12,
+        "fileName": "Receipt_updated.jpg",
+        "cloudinaryPublicId": "requests/file_adv_012",
+        "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/file_adv_012.jpg",
+        "fileType": "image/jpeg",
+        "size": 89000
+      }
+    ],
+    "timeline": [],
+    "createdAt": "2026-02-15T09:30:00",
+    "updatedAt": "2026-02-24T11:00:00"
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 
 ---
 
-### DELETE `/requests/:id`
+### DELETE `/requests/{id}`
 Huỷ request (chuyển status sang `CANCELLED`). Chỉ owner được huỷ và chỉ cho phép khi `status = PENDING`.
 
-**Response:** `{ "message": "Request cancelled successfully" }`
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "message": "Request cancelled successfully"
+  },
+  "timestamp": "2026-04-24T15:30:00"
+}
+```
 > Backend cập nhật `requests.status = CANCELLED`. Tạo `request_histories`: `action = CANCEL`, `status_after_action = CANCELLED`.
 
 ---
@@ -1383,7 +1542,6 @@ Danh sách projects mà user hiện tại là LEADER.
 
 **Params:** `?status=PLANNING|ACTIVE|PAUSED|CLOSED&search=string&page=1&limit=20`
 
-**DB mapping:** `projects` WHERE `id IN (SELECT project_id FROM project_members WHERE user_id = currentUser.id AND project_role = 'LEADER')`. + COUNT `project_members`.
 
 **Response:**
 ```json
@@ -1538,8 +1696,6 @@ Xóa member khỏi project.
 Danh sách users trong cùng department **chưa tham gia** project này — dùng cho dropdown khi thêm member.
 
 **Params:** `?search=string`
-
-**DB mapping:** `users` WHERE `department_id = project.department_id` AND `status = ACTIVE` AND `id NOT IN (SELECT user_id FROM project_members WHERE project_id = :id)`.
 
 **Response:**
 ```json
@@ -1761,36 +1917,40 @@ Danh sách requests chi tiêu chờ Team Leader quyết định ở **Flow 1** (
 **Response:**
 ```json
 {
-  "items": [
-    {
-      "id": 101,
-      "requestCode": "REQ-IT-2602-001",
-      "type": "ADVANCE",
-      "amount": 5000000,
-      "requester": {
-        "id": 1,
-        "fullName": "Nguyen Van An",
-        "avatar": "https://res.cloudinary.com/.../signed...",
-        "employeeCode": "MK001"
-      },
-      "project": {
-        "id": 1,
-        "projectCode": "PRJ-ERP-2026"
-      },
-      "phase": {
-        "id": 2,
-        "phaseCode": "PH-DEV-02"
-      },
-      "categoryId": 1,
-      "categoryCode": "CAT-EQP-001",
-      "categoryName": "Equipment & Software",
-      "createdAt": "2026-02-18T09:15:00"
-    }
-  ],
-  "total": 7,
-  "page": 0,
-  "size": 20,
-  "totalPages": 1
+  "success": true,
+  "message": "Success",
+  "data": {
+    "items": [
+      {
+        "id": 101,
+        "requestCode": "REQ-IT-2602-001",
+        "type": "ADVANCE",
+        "amount": 5000000,
+        "requester": {
+          "id": 1,
+          "fullName": "Nguyen Van An",
+          "avatar": "https://res.cloudinary.com/.../upload/v1738900000/avatar/mk001.jpg",
+          "employeeCode": "MK001"
+        },
+        "project": {
+          "id": 1,
+          "projectCode": "PRJ-ERP-2026"
+        },
+        "phase": {
+          "id": 2,
+          "phaseCode": "PH-DEV-02"
+        },
+        "categoryId": 1,
+        "categoryName": "Equipment & Software",
+        "createdAt": "2026-02-18T09:15:00"
+      }
+    ],
+    "total": 7,
+    "page": 0,
+    "size": 20,
+    "totalPages": 1
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 
@@ -1798,60 +1958,65 @@ Danh sách requests chi tiêu chờ Team Leader quyết định ở **Flow 1** (
 
 ---
 
-### GET `/team-leader/approvals/:id`
+### GET `/team-leader/approvals/{id}`
 Chi tiết một request chi tiêu cần Team Leader duyệt.
 
 **Response:** 
 ```json
 {
-      "id": 101,
-      "requestCode": "REQ-IT-2602-001",
-      "type": "ADVANCE",
-      "status": "PENDING",
-      "amount": 5000000,
-      "description": "Advance payment for API licenses.",
-      "requester": {
-        "id": 1,
-        "fullName": "Nguyen Van An",
-        "avatar": "https://res.cloudinary.com/.../signed...",
-        "employeeCode": "MK001",
-        "jobTitle": "Backend Developer",
-        "email": "van.an@ifms.vn"
-      },
-      "project": {
-        "id": 1,
-        "projectCode": "PRJ-ERP-2026",
-        "name": "ERP Integration"
-      },
-      "phase": {
-        "id": 2,
-        "phaseCode": "PH-DEV-02",
-        "name": "Phase 2 – Development",
-        "budgetLimit": 80000000,
-        "currentSpent": 62500000
-      },
-      "categoryId": 1,
-      "categoryCode": "CAT-EQP-001",
-      "categoryName": "Equipment & Software",
-      "attachments": [
-        {
-          "fileName": "stripe_invoice_Q1.pdf",
-          "cloudinaryPublicId": "requests/stripe_invoice_q1",
-          "url": "https://res.cloudinary.com/.../signed...",
-          "fileType": "application/pdf",
-          "size": 251000
-        }
-      ],
-      "createdAt": "2026-02-18T09:15:00"
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": 101,
+    "requestCode": "REQ-IT-2602-001",
+    "type": "ADVANCE",
+    "status": "PENDING",
+    "amount": 5000000,
+    "description": "Advance payment for API licenses.",
+    "requester": {
+      "id": 1,
+      "fullName": "Nguyen Van An",
+      "avatar": "https://res.cloudinary.com/.../upload/v1738900000/avatar/mk001.jpg",
+      "employeeCode": "MK001",
+      "jobTitle": "Backend Developer",
+      "email": "van.an@ifms.vn"
+    },
+    "project": {
+      "id": 1,
+      "projectCode": "PRJ-ERP-2026",
+      "name": "ERP Integration"
+    },
+    "phase": {
+      "id": 2,
+      "phaseCode": "PH-DEV-02",
+      "name": "Phase 2 - Development",
+      "budgetLimit": 80000000,
+      "currentSpent": 62500000
+    },
+    "categoryId": 1,
+    "categoryName": "Equipment & Software",
+    "attachments": [
+      {
+        "fileId": 31,
+        "fileName": "stripe_invoice_Q1.pdf",
+        "cloudinaryPublicId": "requests/stripe_invoice_q1",
+        "url": "https://res.cloudinary.com/.../upload/v1738900000/requests/stripe_invoice_q1.pdf",
+        "fileType": "application/pdf",
+        "size": 251000
+      }
+    ],
+    "createdAt": "2026-02-18T09:15:00"
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 
 
-Giống `GET /requests/:id` nhưng trong scope project của Team Leader và dùng trạng thái Flow 1 (`PENDING`, `APPROVED_BY_TEAM_LEADER`, `PAID`, `REJECTED`, `CANCELLED`).
+Giống `GET /requests/{id}` nhưng trong scope project của Team Leader và dùng trạng thái Flow 1 (`PENDING`, `APPROVED_BY_TEAM_LEADER`, `PAID`, `REJECTED`, `CANCELLED`).
 
 ---
 
-### POST `/team-leader/approvals/:id/approve`
+### POST `/team-leader/approvals/{id}/approve`
 Team Leader duyệt request chi tiêu (Flow 1).
 
 > Sau khi duyệt: request đi vào bước Accountant execution theo SoD của Flow 1.
@@ -1865,18 +2030,23 @@ Team Leader duyệt request chi tiêu (Flow 1).
 **Response:**
 ```json
 {
-  "id": 101,
-  "requestCode": "REQ-IT-2602-001",
-  "status": "APPROVED_BY_TEAM_LEADER",
-  "approvedAmount": 5000000,
-  "comment": "Approved — forward to accountant."
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": 101,
+    "requestCode": "REQ-IT-2602-001",
+    "status": "APPROVED_BY_TEAM_LEADER",
+    "approvedAmount": 5000000,
+    "comment": "Approved - forward to accountant."
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 > Backend tạo `request_histories` với `action = APPROVE`, `status_after_action = APPROVED_BY_TEAM_LEADER`. Request chuyển sang trạng thái `APPROVED_BY_TEAM_LEADER`, chờ Accountant giải ngân.
 
 ---
 
-### POST `/team-leader/approvals/:id/reject`
+### POST `/team-leader/approvals/{id}/reject`
 Team Leader từ chối request. Bắt buộc nhập lý do.
 
 **Body:**
@@ -1886,15 +2056,22 @@ Team Leader từ chối request. Bắt buộc nhập lý do.
 **Response:**
 ```json
 {
-  "id": 101,
-  "requestCode": "REQ-IT-2602-001",
-  "status": "REJECTED",
-  "rejectReason": "Category budget insufficient for this phase"
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": 101,
+    "requestCode": "REQ-IT-2602-001",
+    "status": "REJECTED",
+    "rejectReason": "Category budget insufficient for this phase"
+  },
+  "timestamp": "2026-04-24T15:30:00"
 }
 ```
 > Backend cập nhật `requests.status = REJECTED`, `requests.reject_reason`. Tạo `request_histories`: `action = REJECT`, `status_after_action = REJECTED`.
 
 > Flow 1 recap: `PENDING -> APPROVED_BY_TEAM_LEADER -> PAID` hoặc `REJECTED`.
+
+> **Realtime — Project Wallet:** Team Leader có thể subscribe kênh SSE `GET /users/project/{projectId}/stream` để nhận `wallet.updated` và `transaction.created` khi ví dự án thay đổi (tiền vào khi Manager approve PROJECT_TOPUP, tiền ra khi Accountant giải ngân ADVANCE/EXPENSE).
 
 ---
 
@@ -1937,36 +2114,82 @@ Danh sách expense categories đã gán budget cho một phase trong dự án. D
 ---
 
 ### PUT `/team-leader/projects/:id/categories`
-Team Leader thiết lập/cập nhật Category Budget cho một Phase. Ghi đè toàn bộ (sync).
+Team Leader cập nhật **1** PhaseCategoryBudget trong một lần gọi.
 
 **Body:**
 ```json
 {
   "phaseId": 2,
-  "categories": [
-    { "categoryId": 1, "budgetLimit": 25000000 },
-    { "categoryId": 2, "budgetLimit": 35000000 }
-  ]
+  "categoryId": 1,
+  "budgetLimit": 25000000
 }
 ```
-> Validation: `SUM(budgetLimit) ≤ project_phases.budget_limit`.  
-> Backend xóa toàn bộ `phase_category_budgets` WHERE `phase_id` rồi insert lại.
+> Validation:
+> - `budgetLimit` mới của category phải `>= currentSpent` của chính category đó.
+> - Tổng budget của phase sau cập nhật (`currentTotal - oldBudget + newBudget`) phải `<= project_phases.budget_limit`.
+> - Chỉ update đúng 1 record `phase_category_budgets` theo (`phaseId`, `categoryId`).
 
 **Response:** Giống `GET /team-leader/projects/:id/categories`.
 
 ---
 
-### GET `/team-leader/expense-categories`
-Danh sách tất cả expense categories có sẵn trong hệ thống (dùng cho dropdown khi thiết lập Category Budget).
+### DELETE `/team-leader/projects/:id/categories`
+Team Leader xóa **1** PhaseCategoryBudget trong một lần gọi.
+
+**Body:**
+```json
+{
+  "phaseId": 2,
+  "categoryId": 1
+}
+```
+> Validation:
+> - Chỉ được xóa khi `currentSpent == 0`.
+> - Nếu không tồn tại (`phaseId`, `categoryId`) thì trả lỗi not found.
+
+**Response:** Giống `GET /team-leader/projects/:id/categories`.
+
+---
+
+### GET `/team-leader/expense-categories?projectId={projectId}`
+Trả về danh sách category khả dụng cho Team Leader khi cấu hình ngân sách category của dự án, bao gồm:
+- Category hệ thống (`isSystemDefault = true`)
+- Category riêng đã được tạo cho đúng project (`project_id = projectId`, `isSystemDefault = false`)
+
+**Query params:**
+- `projectId` (required, Long)
 
 **Response:**
 ```json
 [
   { "id": 1, "name": "Travel & Accommodation", "description": "Công tác phí, di chuyển, khách sạn", "isSystemDefault": true },
   { "id": 2, "name": "Equipment & Software", "description": "Mua sắm thiết bị, bản quyền phần mềm", "isSystemDefault": true },
-  { "id": 3, "name": "Meals & Entertainment", "description": "Ăn uống, tiếp khách, team building", "isSystemDefault": true },
-  { "id": 4, "name": "Outsourcing & Services", "description": "Thuê ngoài, dịch vụ", "isSystemDefault": true }
+  { "id": 15, "name": "Integration Testing Vendor", "description": "Chi phí vendor test tích hợp dự án", "isSystemDefault": false }
 ]
+```
+
+### POST `/team-leader/projects/:id/expense-categories`
+Team Leader tạo mới category riêng cho project (`isSystemDefault = false`, `project = :id`) và đồng thời tạo luôn `phase_category_budgets` cho 1 phase cụ thể trong cùng transaction.
+
+**Body:**
+```json
+{
+  "name": "Integration Testing Vendor",
+  "description": "Chi phí vendor test tích hợp dự án",
+  "phaseId": 2,
+  "budgetLimit": 10000000
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 15,
+  "name": "Integration Testing Vendor",
+  "description": "Chi phí vendor test tích hợp dự án",
+  "isSystemDefault": false,
+  "projectId": 1
+}
 ```
 
 ---
@@ -1979,11 +2202,11 @@ Danh sách tất cả expense categories có sẵn trong hệ thống (dùng cho
 ---
 
 ### GET `/manager/approvals`
-Danh sách requests xin cấp vốn dự án chờ Manager duyệt (`status = PENDING_APPROVAL`, `type = PROJECT_TOPUP`, thuộc department của manager).
+Danh sách requests xin cấp vốn dự án chờ Manager duyệt (`status = PENDING`, `type = PROJECT_TOPUP`, thuộc department của manager).
 
 **Params:** `?search=string&page=1&limit=20`
 
-**DB mapping:** `requests` WHERE `status = PENDING_APPROVAL` AND `type = PROJECT_TOPUP` AND `project.department_id = manager.department_id`. JOIN `users` (requester) + `projects`.
+**DB mapping:** `requests` WHERE `status = PENDING` AND `type = PROJECT_TOPUP` AND `project.department_id = manager.department_id`. JOIN `users` (requester) + `projects`.
 
 **Response:**
 ```json
@@ -1993,7 +2216,7 @@ Danh sách requests xin cấp vốn dự án chờ Manager duyệt (`status = PE
       "id": 201,
       "requestCode": "REQ-ENG-0326-001",
       "type": "PROJECT_TOPUP",
-      "status": "PENDING_APPROVAL",
+      "status": "PENDING",
       "amount": 50000000,
       "description": "Xin cấp thêm vốn cho Phase 2 — thiếu ngân sách Equipment.",
       "requester": {
@@ -2032,7 +2255,7 @@ Chi tiết một request PROJECT_TOPUP cần Manager duyệt.
   "id": 201,
   "requestCode": "REQ-ENG-0326-001",
   "type": "PROJECT_TOPUP",
-  "status": "PENDING_APPROVAL",
+  "status": "PENDING",
   "amount": 50000000,
   "approvedAmount": null,
   "description": "Xin cấp thêm vốn cho Phase 2 — thiếu ngân sách Equipment.",
@@ -2068,8 +2291,9 @@ Chi tiết một request PROJECT_TOPUP cần Manager duyệt.
 ---
 
 ### POST `/manager/approvals/:id/approve`
-Manager duyệt PROJECT_TOPUP. Status chuyển sang `APPROVED` → auto `PAID`.
-Hệ thống tự động: `departments.total_available_balance -= approved_amount`, `projects.available_budget += approved_amount`.
+Manager duyệt `PROJECT_TOPUP`. Wallet transfer thực hiện **đồng bộ ngay lập tức** trong cùng database transaction — không qua scheduler.
+
+Flow: `PENDING → APPROVED_BY_MANAGER → PAID` (tất cả trong 1 request).
 
 > ⚠️ **KHÔNG CÓ MANAGER_LIMIT, KHÔNG ESCALATE.** Manager có toàn quyền duyệt mọi số tiền, miễn là Department Fund còn đủ.
 
@@ -2087,8 +2311,10 @@ Hệ thống tự động: `departments.total_available_balance -= approved_amou
   "comment": "Approved — Project Fund topped up."
 }
 ```
-> Backend tạo `request_histories`: `action = APPROVE`, `status_after_action = APPROVED`.  
-> Backend auto-transition: `APPROVED → PAID` (tạo Transaction `PROJECT_QUOTA_ALLOCATION`).
+> Backend tạo 2 `request_histories`: `action = APPROVE` (→ `APPROVED_BY_MANAGER`) và `action = PAYOUT` (→ `PAID`).  
+> Wallet operation: `walletService.transfer(DEPARTMENT → PROJECT, PROJECT_QUOTA_ALLOCATION)` — `Wallet(DEPARTMENT) -= approvedAmount`, `Wallet(PROJECT) += approvedAmount`.  
+> `requests.paid_at` được set ngay khi approve.  
+> **Realtime:** Server push `wallet.updated` + `transaction.created` tới Manager qua `GET /users/department/{departmentId}/stream` và tới Team Leader qua `GET /users/project/{projectId}/stream`.
 
 ---
 
@@ -2109,6 +2335,8 @@ Từ chối PROJECT_TOPUP. Bắt buộc nhập lý do.
 }
 ```
 > Backend cập nhật `requests.status = REJECTED`, `requests.reject_reason`. Tạo `request_histories`: `action = REJECT`, `status_after_action = REJECTED`.
+
+> **Realtime — Department Wallet:** Manager có thể subscribe kênh SSE `GET /users/department/{departmentId}/stream` để nhận `wallet.updated` và `transaction.created` khi ví phòng ban thay đổi (tiền ra khi approve PROJECT_TOPUP, tiền vào khi CFO approve DEPARTMENT_TOPUP).
 
 ---
 
@@ -3147,9 +3375,9 @@ Chi tiết một request `DEPARTMENT_TOPUP` cần CFO duyệt.
 ---
 
 ### POST `/cfo/approvals/:id/approve`
-CFO duyệt `DEPARTMENT_TOPUP`. Status chuyển sang `APPROVED_BY_CFO` và scheduler sẽ auto-pay thành `PAID`.
+CFO duyệt `DEPARTMENT_TOPUP`. Status chuyển sang `APPROVED_BY_CFO`; scheduler **auto-pay sau ~1 phút** chuyển sang `PAID`.
 
-Hệ thống tự động khi auto-pay: `Wallet(COMPANY_FUND) -= approvedAmount`, `Wallet(DEPARTMENT) += approvedAmount`.
+Khi auto-pay: `walletService.transfer(COMPANY_FUND → DEPARTMENT, DEPT_QUOTA_ALLOCATION)` — `Wallet(COMPANY_FUND) -= approvedAmount`, `Wallet(DEPARTMENT) += approvedAmount`.
 
 **Body:**
 ```json
@@ -3186,6 +3414,8 @@ CFO từ chối `DEPARTMENT_TOPUP`.
   "rejectReason": "System fund insufficient for this quarter"
 }
 ```
+
+> **Realtime — Company Fund Wallet:** CFO và Accountant có thể subscribe kênh SSE `GET /users/company-fund/stream` để nhận `wallet.updated` và `transaction.created` khi quỹ công ty thay đổi (tiền ra khi CFO approve DEPARTMENT_TOPUP hoặc Accountant chạy payroll, tiền vào khi SYSTEM_TOPUP).
 
 ---
 

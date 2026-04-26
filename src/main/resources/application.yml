@@ -22,7 +22,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate                     # Validate schema khi startup (không tự động tạo/alter)
+      ddl-auto: create                 # Validate schema khi startup (không tự động tạo/alter)
     show-sql: false
     properties:
       hibernate:

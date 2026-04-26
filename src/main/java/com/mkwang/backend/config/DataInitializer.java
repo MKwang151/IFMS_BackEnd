@@ -4,8 +4,8 @@ import com.mkwang.backend.modules.accounting.entity.CompanyFund;
 import com.mkwang.backend.modules.accounting.repository.CompanyFundRepository;
 import com.mkwang.backend.modules.config.entity.SystemConfig;
 import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
-import com.mkwang.backend.modules.project.entity.ExpenseCategory;
-import com.mkwang.backend.modules.project.repository.ExpenseCategoryRepository;
+import com.mkwang.backend.modules.project.entity.*;
+import com.mkwang.backend.modules.project.repository.*;
 import com.mkwang.backend.modules.organization.entity.Department;
 import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 
@@ -31,29 +32,31 @@ import java.util.Set;
  * Idempotent: safe to run on every startup. Only creates data that does not already exist.
  *
  * Seeding order (respects FK constraints):
- *   1. Roles + Permissions (EMPLOYEE, TEAM_LEADER, MANAGER, ACCOUNTANT, ADMIN)
- *   2. Departments (manager_id = null initially, updated after users are created)
- *   3. Users (role + department assigned)
- *   4. Update Department managers
- *   5. UserProfiles
- *   6. Wallets
- *   7. CompanyFund + Wallets (COMPANY_FUND + FLOAT_MAIN)
- *   8. SystemConfig
- *   9. ExpenseCategories (system defaults)
+ *   1. Roles + Permissions (EMPLOYEE, TEAM_LEADER, MANAGER, ACCOUNTANT, CFO, ADMIN)
+ *   2. Departments (manager_id = null initially, linked after users created)
+ *   3. Users + UserProfiles + USER Wallets (all in one pass)
+ *   4. CompanyFund + Wallets (COMPANY_FUND + FLOAT_MAIN)
+ *   5. SystemConfig
+ *   6. ExpenseCategories (system defaults)
+ *   7. Projects + ProjectPhases + ProjectMembers + PhaseCategoryBudgets + PROJECT Wallets
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
-    private final RoleRepository            roleRepository;
-    private final UserRepository            userRepository;
-    private final DepartmentRepository      departmentRepository;
-    private final WalletRepository          walletRepository;
-    private final CompanyFundRepository     companyFundRepository;
-    private final SystemConfigRepository    systemConfigRepository;
-    private final ExpenseCategoryRepository expenseCategoryRepository;
-    private final PasswordEncoder           passwordEncoder;
+    private final RoleRepository                roleRepository;
+    private final UserRepository                userRepository;
+    private final DepartmentRepository          departmentRepository;
+    private final WalletRepository              walletRepository;
+    private final CompanyFundRepository         companyFundRepository;
+    private final SystemConfigRepository        systemConfigRepository;
+    private final ExpenseCategoryRepository     expenseCategoryRepository;
+    private final ProjectRepository             projectRepository;
+    private final ProjectPhaseRepository        projectPhaseRepository;
+    private final ProjectMemberRepository       projectMemberRepository;
+    private final PhaseCategoryBudgetRepository phaseCategoryBudgetRepository;
+    private final PasswordEncoder               passwordEncoder;
 
     private static final String DEFAULT_PASSWORD     = "Ifms@2026";
     private static final BigDecimal INITIAL_FUND     = new BigDecimal("50000000000"); // 50 tỷ VND
@@ -74,6 +77,7 @@ public class DataInitializer implements CommandLineRunner {
         initCompanyFund();
         initSystemConfigs();
         initExpenseCategories();
+        initProjects();
 
         log.info("╔══════════════════════════════════════════╗");
         log.info("║   ✅  DataInitializer completed OK       ║");
@@ -84,7 +88,7 @@ public class DataInitializer implements CommandLineRunner {
     // 1. ROLES & PERMISSIONS
     // =========================================================
     private void initRoles() {
-        log.info("── [1/5] Seeding Roles ...");
+        log.info("── [1/6] Seeding Roles ...");
 
         // EMPLOYEE – Nhân viên
         createRoleIfNotExists("EMPLOYEE", "Nhân viên – tạo yêu cầu, xem ví cá nhân", Set.of(
@@ -172,6 +176,7 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.REQUEST_VIEW_APPROVED,
                 Permission.REQUEST_PAYOUT,
                 Permission.TRANSACTION_APPROVE_WITHDRAW,
+                Permission.WALLET_VIEW_ALL,
                 Permission.PAYROLL_MANAGE,
                 Permission.PAYROLL_EXECUTE,
                 Permission.COMPANY_FUND_VIEW,
@@ -199,6 +204,7 @@ public class DataInitializer implements CommandLineRunner {
                 Permission.REQUEST_APPROVE_DEPT_TOPUP,
                 Permission.REQUEST_REJECT,
                 Permission.TRANSACTION_APPROVE_WITHDRAW,
+                Permission.WALLET_VIEW_ALL,
                 Permission.COMPANY_FUND_VIEW,
                 Permission.COMPANY_FUND_TOPUP,
                 Permission.DEPT_BUDGET_ALLOCATE,
@@ -236,7 +242,7 @@ public class DataInitializer implements CommandLineRunner {
     // 2. DEPARTMENTS
     // =========================================================
     private void initDepartments() {
-        log.info("── [2/5] Seeding Departments ...");
+        log.info("── [2/6] Seeding Departments ...");
 
         createDeptIfNotExists("Ban Giám Đốc",          "BGD",  new BigDecimal("5000000000"),  new BigDecimal("5000000000"));
         createDeptIfNotExists("Phòng Công Nghệ",        "IT",   new BigDecimal("20000000000"), new BigDecimal("20000000000"));
@@ -248,7 +254,7 @@ public class DataInitializer implements CommandLineRunner {
     // 3. USERS  →  then link managers to departments
     // =========================================================
     private void initUsers() {
-        log.info("── [3/5] Seeding Users, Profiles & Wallets ...");
+        log.info("── [3/6] Seeding Users, Profiles & Wallets ...");
 
         Role adminRole      = roleRepository.findByName("ADMIN").orElseThrow();
         Role cfoRole        = roleRepository.findByName("CFO").orElseThrow();
@@ -257,30 +263,29 @@ public class DataInitializer implements CommandLineRunner {
         Role accountantRole = roleRepository.findByName("ACCOUNTANT").orElseThrow();
         Role employeeRole   = roleRepository.findByName("EMPLOYEE").orElseThrow();
 
-        Department bgd   = departmentRepository.findByCode("BGD").orElseThrow();
         Department it    = departmentRepository.findByCode("IT").orElseThrow();
         Department fin   = departmentRepository.findByCode("FIN").orElseThrow();
         Department sales = departmentRepository.findByCode("SALES").orElseThrow();
 
-        // ---- ADMIN (system config only) ----
+        // ---- ADMIN (system config only — no department, no financial authority) ----
         User admin = createUserIfNotExists(
                 "admin@ifms.vn", "MK000", "Phạm Thị Thanh Hà",
-                adminRole, bgd,
+                adminRole, null,
                 "System Administrator", "0901000001", "Hà Nội",
                 "VCB", "0011004000001", "PHAM THI THANH HA"
         );
 
         User supportAdmin = createUserIfNotExists(
                 "ifms.support.noreply@gmail.com", "MK999", "System Support",
-                adminRole, it,
+                adminRole, null,
                 "System Admin", "0999999999", "Hà Nội",
                 "VCB", "0999999999999", "SYSTEM SUPPORT"
         );
 
-        // ---- CFO (financial governance) ----
+        // ---- CFO (financial governance — belongs to Finance dept) ----
         User cfo = createUserIfNotExists(
                 "cfo@ifms.vn", "MK010", "Nguyễn Văn Minh",
-                cfoRole, bgd,
+                cfoRole, fin,
                 "Chief Financial Officer", "0901000010", "Hà Nội",
                 "VCB", "0011004000010", "NGUYEN VAN MINH"
         );
@@ -346,7 +351,7 @@ public class DataInitializer implements CommandLineRunner {
         );
 
         // Gán manager cho từng phòng ban (sau khi user đã được persist)
-        assignManagerToDept(bgd,   admin);
+        // BGD không có manager — admin không thuộc phòng ban nào
         assignManagerToDept(fin,   accountant);
         assignManagerToDept(it,    managerIT);
         assignManagerToDept(sales, managerSales);
@@ -356,7 +361,7 @@ public class DataInitializer implements CommandLineRunner {
     // 4. COMPANY FUND + WALLETS (COMPANY_FUND + FLOAT_MAIN)
     // =========================================================
     private void initCompanyFund() {
-        log.info("── [4/5] Seeding CompanyFund + system wallets ...");
+        log.info("── [4/6] Seeding CompanyFund + system wallets ...");
 
         // 4a. CompanyFund metadata record (singleton id=1)
         if (companyFundRepository.count() == 0) {
@@ -404,7 +409,7 @@ public class DataInitializer implements CommandLineRunner {
     // 5. SYSTEM CONFIGS
     // =========================================================
     private void initSystemConfigs() {
-        log.info("── [5/5] Seeding SystemConfig ...");
+        log.info("── [5/6] Seeding SystemConfig ...");
 
         List<Object[]> configs = List.of(
                 // key, value, description
@@ -473,6 +478,91 @@ public class DataInitializer implements CommandLineRunner {
                 log.info("   📂 Category created: {}", name);
             }
         }
+    }
+
+    // =========================================================
+    // 7. PROJECTS  (for request flow testing)
+    //
+    // Scenario: ONE active IT project — "Hệ Thống ERP Nội Bộ"
+    //   • Manager   : manager.it  (department manager)
+    //   • Leader    : tl.it       (TEAM_LEADER — Flow 1 approver)
+    //   • Members   : emp.it1, emp.it2, emp.sales1
+    //
+    // Phase 1 "Khởi Động & Phân Tích" is ACTIVE and set as currentPhase.
+    // PhaseCategoryBudgets cover all 4 system categories so employees can
+    // submit any of ADVANCE / EXPENSE / REIMBURSE immediately.
+    //
+    // A PROJECT wallet is seeded with pre-funded balance so Accountant
+    // can execute payouts without running a PROJECT_TOPUP flow first.
+    // =========================================================
+    private void initProjects() {
+        log.info("── [7/7] Seeding Projects ...");
+
+        // ── resolve actors ──────────────────────────────────────────
+        User managerIT  = userRepository.findByEmail("manager.it@ifms.vn").orElseThrow();
+        User teamLead   = userRepository.findByEmail("tl.it@ifms.vn").orElseThrow();
+        User empIT1     = userRepository.findByEmail("emp.it1@ifms.vn").orElseThrow();
+        User empIT2     = userRepository.findByEmail("emp.it2@ifms.vn").orElseThrow();
+        User empSales1  = userRepository.findByEmail("emp.sales1@ifms.vn").orElseThrow();
+        Department it   = departmentRepository.findByCode("IT").orElseThrow();
+
+        // ── resolve expense categories (seeded in step 6) ──────────
+        ExpenseCategory catEquip    = expenseCategoryRepository.findByName("Equipment & Software").orElseThrow();
+        ExpenseCategory catOutsource= expenseCategoryRepository.findByName("Outsourcing & Services").orElseThrow();
+        ExpenseCategory catMeals    = expenseCategoryRepository.findByName("Meals & Entertainment").orElseThrow();
+        ExpenseCategory catTravel   = expenseCategoryRepository.findByName("Travel & Accommodation").orElseThrow();
+
+        // ── PROJECT ─────────────────────────────────────────────────
+        // budget pre-funded to simulate post-PROJECT_TOPUP state for testing
+        BigDecimal projectBudget = new BigDecimal("500000000"); // 500 triệu
+        Project project = createProjectIfNotExists(
+                "PRJ-ERP-2026",
+                "Hệ Thống ERP Nội Bộ",
+                "Triển khai hệ thống ERP nội bộ cho toàn công ty: quản lý nhân sự, tài chính, kho hàng.",
+                it, managerIT,
+                projectBudget
+        );
+
+        // ── PROJECT WALLET (pre-funded — skips PROJECT_TOPUP for test convenience) ──
+        if (!walletRepository.existsByOwnerTypeAndOwnerId(WalletOwnerType.PROJECT, project.getId())) {
+            walletRepository.save(Wallet.builder()
+                    .ownerType(WalletOwnerType.PROJECT)
+                    .ownerId(project.getId())
+                    .balance(projectBudget)
+                    .lockedBalance(BigDecimal.ZERO)
+                    .build());
+            log.info("   💼 Wallet(PROJECT, id={}) created: {} VND", project.getId(), projectBudget);
+        }
+
+        // ── PHASE ───────────────────────────────────────────────────
+        BigDecimal phaseBudget = new BigDecimal("300000000"); // 300 triệu
+        ProjectPhase phase = createPhaseIfNotExists(
+                "PH-INIT-01",
+                "Phase 1 – Khởi Động & Phân Tích",
+                project,
+                phaseBudget,
+                LocalDate.of(2026, 1, 1),
+                LocalDate.of(2026, 6, 30)
+        );
+
+        // ── set currentPhase once (skip if already set) ─────────────
+        if (project.getCurrentPhase() == null) {
+            project.setCurrentPhase(phase);
+            projectRepository.save(project);
+        }
+
+        // ── MEMBERS ─────────────────────────────────────────────────
+        addMemberIfAbsent(project, teamLead,  ProjectRole.LEADER, "Technical Lead");
+        addMemberIfAbsent(project, empIT1,    ProjectRole.MEMBER, "Backend Developer");
+        addMemberIfAbsent(project, empIT2,    ProjectRole.MEMBER, "Frontend Developer");
+        addMemberIfAbsent(project, empSales1, ProjectRole.MEMBER, "Business Analyst");
+
+        // ── PHASE-CATEGORY BUDGETS ──────────────────────────────────
+        // Total = 300_000_000 = phaseBudget
+        setPhaseCategoryBudgetIfAbsent(phase, catEquip,     new BigDecimal("150000000")); // 150 triệu
+        setPhaseCategoryBudgetIfAbsent(phase, catOutsource, new BigDecimal( "80000000")); //  80 triệu
+        setPhaseCategoryBudgetIfAbsent(phase, catMeals,     new BigDecimal( "40000000")); //  40 triệu
+        setPhaseCategoryBudgetIfAbsent(phase, catTravel,    new BigDecimal( "30000000")); //  30 triệu
     }
 
     // =========================================================
@@ -551,7 +641,8 @@ public class DataInitializer implements CommandLineRunner {
         // Wallet
         createWalletIfNotExists(user);
 
-        log.info("   👤 User created: {} | {} | {} | dept={}", employeeCode, fullName, email, department.getCode());
+        log.info("   👤 User created: {} | {} | {} | dept={}", employeeCode, fullName, email,
+                department != null ? department.getCode() : "none");
         return user;
     }
 
@@ -571,6 +662,81 @@ public class DataInitializer implements CommandLineRunner {
             dept.setManager(manager);
             departmentRepository.save(dept);
             log.info("   🏢 Dept [{}] → manager set: {}", dept.getCode(), manager.getEmail());
+        }
+    }
+
+    private Project createProjectIfNotExists(
+            String projectCode, String name, String description,
+            Department department, User manager, BigDecimal budget) {
+
+        return projectRepository.findAll().stream()
+                .filter(p -> p.getProjectCode().equals(projectCode))
+                .findFirst()
+                .orElseGet(() -> {
+                    Project p = projectRepository.save(Project.builder()
+                            .projectCode(projectCode)
+                            .name(name)
+                            .description(description)
+                            .department(department)
+                            .manager(manager)
+                            .totalBudget(budget)
+                            .availableBudget(budget)
+                            .totalSpent(BigDecimal.ZERO)
+                            .status(ProjectStatus.ACTIVE)
+                            .build());
+                    log.info("   📁 Project created: {} [{}]", name, projectCode);
+                    return p;
+                });
+    }
+
+    private ProjectPhase createPhaseIfNotExists(
+            String phaseCode, String name, Project project,
+            BigDecimal budgetLimit, LocalDate startDate, LocalDate endDate) {
+
+        return projectPhaseRepository.findByProject_IdOrderByCreatedAtAsc(project.getId())
+                .stream()
+                .filter(ph -> ph.getPhaseCode().equals(phaseCode))
+                .findFirst()
+                .orElseGet(() -> {
+                    ProjectPhase ph = projectPhaseRepository.save(ProjectPhase.builder()
+                            .phaseCode(phaseCode)
+                            .name(name)
+                            .project(project)
+                            .budgetLimit(budgetLimit)
+                            .currentSpent(BigDecimal.ZERO)
+                            .status(PhaseStatus.ACTIVE)
+                            .startDate(startDate)
+                            .endDate(endDate)
+                            .build());
+                    log.info("   📋 Phase created: {} [{}] budget={}", name, phaseCode, budgetLimit);
+                    return ph;
+                });
+    }
+
+    private void addMemberIfAbsent(Project project, User user, ProjectRole role, String position) {
+        if (!projectMemberRepository.existsByProject_IdAndUser_Id(project.getId(), user.getId())) {
+            projectMemberRepository.save(ProjectMember.builder()
+                    .id(new ProjectMemberId(project.getId(), user.getId()))
+                    .project(project)
+                    .user(user)
+                    .projectRole(role)
+                    .position(position)
+                    .build());
+            log.info("   👥 Member added: {} → {} ({})", user.getEmail(), project.getProjectCode(), role);
+        }
+    }
+
+    private void setPhaseCategoryBudgetIfAbsent(ProjectPhase phase, ExpenseCategory category, BigDecimal limit) {
+        PhaseCategoryBudgetId id = new PhaseCategoryBudgetId(phase.getId(), category.getId());
+        if (!phaseCategoryBudgetRepository.existsById(id)) {
+            phaseCategoryBudgetRepository.save(PhaseCategoryBudget.builder()
+                    .id(id)
+                    .phase(phase)
+                    .category(category)
+                    .budgetLimit(limit)
+                    .currentSpent(BigDecimal.ZERO)
+                    .build());
+            log.info("   💰 CategoryBudget: [{}] {} = {}", phase.getPhaseCode(), category.getName(), limit);
         }
     }
 }

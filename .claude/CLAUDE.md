@@ -6,7 +6,7 @@
 
 - **Base URL:** `http://localhost:8080/api/v1`
 - **Package root:** `com.mkwang.backend`
-- **DB:** PostgreSQL (`IFMSdb`), migrations via Flyway (V1–V11)
+- **DB:** PostgreSQL (`IFMSdb`), migrations via Flyway (V1–V14)
 - **Author / git user:** MKwang
 
 ---
@@ -47,8 +47,7 @@ src/main/java/com/mkwang/backend/
     ├── user/         # User, Role, Permission, Profile, SecuritySettings
     ├── profile/      # UserProfile, UserSecuritySettings
     ├── organization/ # Department
-    ├── project/      # Project, Phase, Members, Budget
-    ├── expense/      # ExpenseCategory
+    ├── project/      # Project, Phase, Members, Budget, ExpenseCategory, PhaseCategoryBudget
     ├── request/      # Request, History, Attachment, AdvanceBalance
     ├── wallet/       # Wallet, Transaction, LedgerEntry (double-entry)
     ├── accounting/   # Payroll, Payslip, SystemFund
