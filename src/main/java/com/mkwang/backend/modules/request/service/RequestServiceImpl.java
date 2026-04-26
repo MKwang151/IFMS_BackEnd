@@ -12,16 +12,32 @@ import com.mkwang.backend.modules.file.service.FileStorageService;
 import com.mkwang.backend.modules.project.entity.ExpenseCategory;
 import com.mkwang.backend.modules.project.entity.Project;
 import com.mkwang.backend.modules.project.entity.ProjectPhase;
+import com.mkwang.backend.modules.project.service.CategoryBudgetService;
 import com.mkwang.backend.modules.project.service.ProjectQueryService;
 import com.mkwang.backend.modules.request.dto.request.AttachmentRequest;
+import com.mkwang.backend.modules.request.dto.request.ApproveRequestRequest;
 import com.mkwang.backend.modules.request.dto.request.CreateRequestRequest;
+import com.mkwang.backend.modules.request.dto.request.DisburseRequest;
+import com.mkwang.backend.modules.request.dto.request.RejectRequestRequest;
 import com.mkwang.backend.modules.request.dto.request.UpdateRequestRequest;
+import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementDetailResponse;
+import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.AccountantRejectResponse;
+import com.mkwang.backend.modules.request.dto.response.DisburseResponse;
 import com.mkwang.backend.modules.request.dto.response.EmployeeRequestSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.ManagerApprovalDetailResponse;
+import com.mkwang.backend.modules.request.dto.response.ManagerApprovalSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.ManagerApproveResponse;
+import com.mkwang.backend.modules.request.dto.response.ManagerRejectResponse;
 import com.mkwang.backend.modules.request.dto.response.ManagerRequestSummaryResponse;
 import com.mkwang.backend.modules.request.dto.response.RequestDetailResponse;
 import com.mkwang.backend.modules.request.dto.response.RequestHistoryResponse;
 import com.mkwang.backend.modules.request.dto.response.RequestSummaryResponse;
 import com.mkwang.backend.modules.request.dto.response.TeamLeaderRequestSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.TlApprovalDetailResponse;
+import com.mkwang.backend.modules.request.dto.response.TlApprovalSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.TlApproveResponse;
+import com.mkwang.backend.modules.request.dto.response.TlRejectResponse;
 import com.mkwang.backend.modules.request.entity.AdvanceBalance;
 import com.mkwang.backend.modules.request.entity.Request;
 import com.mkwang.backend.modules.request.entity.RequestAction;
@@ -32,17 +48,26 @@ import com.mkwang.backend.modules.request.mapper.RequestMapper;
 import com.mkwang.backend.modules.request.repository.AdvanceBalanceRepository;
 import com.mkwang.backend.modules.request.repository.RequestRepository;
 import com.mkwang.backend.modules.request.repository.RequestSpecification;
+import com.mkwang.backend.modules.profile.dto.request.VerifyMyPinRequest;
+import com.mkwang.backend.modules.profile.service.ProfileService;
 import com.mkwang.backend.modules.user.entity.User;
 import com.mkwang.backend.modules.user.service.UserService;
+import com.mkwang.backend.modules.wallet.entity.ReferenceType;
+import com.mkwang.backend.modules.wallet.entity.TransactionType;
+import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
+import com.mkwang.backend.modules.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -51,13 +76,20 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RequestServiceImpl implements RequestService {
 
+    private static final List<RequestType> FLOW1_TYPES =
+            List.of(RequestType.ADVANCE, RequestType.EXPENSE, RequestType.REIMBURSE);
+    private static final RequestType FLOW2_TYPE = RequestType.PROJECT_TOPUP;
+
     private final RequestRepository requestRepository;
     private final AdvanceBalanceRepository advanceBalanceRepository;
     private final FileStorageService fileStorageService;
     private final UserService userService;
+    private final ProfileService profileService;
     private final ProjectQueryService projectQueryService;
+    private final CategoryBudgetService categoryBudgetService;
     private final BusinessCodeGenerator codeGenerator;
     private final RequestMapper requestMapper;
+    private final WalletService walletService;
 
     @Override
     @Transactional(readOnly = true)
@@ -239,6 +271,428 @@ public class RequestServiceImpl implements RequestService {
         requestRepository.save(request);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_TEAM_LEADER')")
+    public PageResponse<TlApprovalSummaryResponse> getTlApprovals(
+            Long leaderId, RequestType type, Long projectId, String search, int page, int size) {
+
+        if (type != null && !FLOW1_TYPES.contains(type)) {
+            throw new BadRequestException("Team Leader approvals only support ADVANCE/EXPENSE/REIMBURSE");
+        }
+
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+
+        List<Long> leaderProjectIds = projectQueryService.getLeaderProjectIds(leaderId);
+        if (leaderProjectIds.isEmpty()) {
+            return PageResponse.<TlApprovalSummaryResponse>builder()
+                    .items(List.of())
+                    .total(0L)
+                    .page(safePage)
+                    .size(safeSize)
+                    .totalPages(0)
+                    .build();
+        }
+
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Specification<Request> spec = RequestSpecification.filterForTlApprovals(leaderProjectIds, type, projectId, search);
+
+        Page<TlApprovalSummaryResponse> result = requestRepository
+                .findAll(spec, pageable)
+                .map(requestMapper::toTlApprovalSummaryResponse);
+
+        return PageResponse.<TlApprovalSummaryResponse>builder()
+                .items(result.getContent())
+                .total(result.getTotalElements())
+                .page(safePage)
+                .size(safeSize)
+                .totalPages(result.getTotalPages())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_TEAM_LEADER')")
+    public TlApprovalDetailResponse getTlApprovalDetail(Long id, Long leaderId) {
+        List<Long> leaderProjectIds = projectQueryService.getLeaderProjectIds(leaderId);
+        if (leaderProjectIds.isEmpty()) {
+            throw new ResourceNotFoundException("Request not found");
+        }
+
+        Request request = requestRepository.findDetailByIdForTl(id, leaderProjectIds)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        return requestMapper.toTlApprovalDetailResponse(request);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_TEAM_LEADER')")
+    public TlApproveResponse approveTlRequest(Long id, Long leaderId, ApproveRequestRequest req) {
+        List<Long> leaderProjectIds = projectQueryService.getLeaderProjectIds(leaderId);
+        if (leaderProjectIds.isEmpty()) {
+            throw new ResourceNotFoundException("Request not found");
+        }
+
+        Request request = requestRepository.findDetailByIdForTl(id, leaderProjectIds)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new BadRequestException("Only PENDING requests can be approved");
+        }
+        if (!FLOW1_TYPES.contains(request.getType())) {
+            throw new BadRequestException("Only ADVANCE/EXPENSE/REIMBURSE requests are handled by Team Leader");
+        }
+
+        BigDecimal effectiveAmount = req.getApprovedAmount() != null ? req.getApprovedAmount() : request.getAmount();
+        if (effectiveAmount.compareTo(request.getAmount()) > 0) {
+            throw new BadRequestException("approvedAmount cannot exceed requested amount");
+        }
+
+        request.setStatus(RequestStatus.APPROVED_BY_TEAM_LEADER);
+        request.setApprovedAmount(effectiveAmount);
+
+        User actor = userService.getUserById(leaderId);
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.APPROVE)
+                .statusAfterAction(RequestStatus.APPROVED_BY_TEAM_LEADER)
+                .comment(req.getComment())
+                .build());
+
+        requestRepository.save(request);
+
+        if (request.getType() == RequestType.ADVANCE || request.getType() == RequestType.EXPENSE) {
+            walletService.lockFunds(WalletOwnerType.PROJECT, request.getProject().getId(), effectiveAmount);
+        }
+
+        return requestMapper.toTlApproveResponse(request, req.getComment());
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_TEAM_LEADER')")
+    public TlRejectResponse rejectTlRequest(Long id, Long leaderId, RejectRequestRequest req) {
+        List<Long> leaderProjectIds = projectQueryService.getLeaderProjectIds(leaderId);
+        if (leaderProjectIds.isEmpty()) {
+            throw new ResourceNotFoundException("Request not found");
+        }
+
+        Request request = requestRepository.findDetailByIdForTl(id, leaderProjectIds)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new BadRequestException("Only PENDING requests can be rejected");
+        }
+        if (!FLOW1_TYPES.contains(request.getType())) {
+            throw new BadRequestException("Only ADVANCE/EXPENSE/REIMBURSE requests are handled by Team Leader");
+        }
+
+        request.setStatus(RequestStatus.REJECTED);
+        request.setRejectReason(req.getReason());
+
+        User actor = userService.getUserById(leaderId);
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.REJECT)
+                .statusAfterAction(RequestStatus.REJECTED)
+                .comment(req.getReason())
+                .build());
+
+        requestRepository.save(request);
+        return requestMapper.toTlRejectResponse(request);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_PROJECT_TOPUP')")
+    public PageResponse<ManagerApprovalSummaryResponse> getManagerApprovals(Long managerId, String search, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+
+        Long departmentId = getManagerDepartmentId(managerId);
+
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Specification<Request> spec = RequestSpecification.filterForManagerApprovals(departmentId, search);
+
+        Page<ManagerApprovalSummaryResponse> result = requestRepository
+                .findAll(spec, pageable)
+                .map(requestMapper::toManagerApprovalSummaryResponse);
+
+        return PageResponse.<ManagerApprovalSummaryResponse>builder()
+                .items(result.getContent())
+                .total(result.getTotalElements())
+                .page(safePage)
+                .size(safeSize)
+                .totalPages(result.getTotalPages())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_PROJECT_TOPUP')")
+    public ManagerApprovalDetailResponse getManagerApprovalDetail(Long id, Long managerId) {
+        Long departmentId = getManagerDepartmentId(managerId);
+
+        Request request = requestRepository.findDetailByIdForManager(id, departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        List<RequestHistoryResponse> timeline = requestRepository.findHistoriesByRequestId(id)
+                .stream()
+                .map(requestMapper::toHistoryResponse)
+                .toList();
+
+        return requestMapper.toManagerApprovalDetailResponse(request, timeline);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_PROJECT_TOPUP')")
+    public ManagerApproveResponse approveManagerRequest(Long id, Long managerId, ApproveRequestRequest req) {
+        Long departmentId = getManagerDepartmentId(managerId);
+
+        Request request = requestRepository.findDetailByIdForManager(id, departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new BadRequestException("Only PENDING requests can be approved");
+        }
+        if (request.getType() != FLOW2_TYPE) {
+            throw new BadRequestException("Only PROJECT_TOPUP requests are handled by Manager");
+        }
+
+        BigDecimal effectiveAmount = req.getApprovedAmount() != null ? req.getApprovedAmount() : request.getAmount();
+        if (effectiveAmount.compareTo(request.getAmount()) > 0) {
+            throw new BadRequestException("approvedAmount cannot exceed requested amount");
+        }
+
+        User actor = userService.getUserById(managerId);
+
+        request.setStatus(RequestStatus.APPROVED_BY_MANAGER);
+        request.setApprovedAmount(effectiveAmount);
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.APPROVE)
+                .statusAfterAction(RequestStatus.APPROVED_BY_MANAGER)
+                .comment(req.getComment())
+                .build());
+
+        Long projectId = request.getProject().getId();
+        walletService.transfer(
+                WalletOwnerType.DEPARTMENT, departmentId,
+                WalletOwnerType.PROJECT, projectId,
+                effectiveAmount,
+                TransactionType.PROJECT_QUOTA_ALLOCATION,
+                ReferenceType.REQUEST, request.getId(),
+                "PROJECT_TOPUP approved by manager — request " + request.getRequestCode()
+        );
+
+        request.setStatus(RequestStatus.PAID);
+        request.setPaidAt(LocalDateTime.now());
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.PAYOUT)
+                .statusAfterAction(RequestStatus.PAID)
+                .comment("Auto-paid on manager approval")
+                .build());
+
+        requestRepository.save(request);
+        return requestMapper.toManagerApproveResponse(request, req.getComment());
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_PROJECT_TOPUP')")
+    public ManagerRejectResponse rejectManagerRequest(Long id, Long managerId, RejectRequestRequest req) {
+        Long departmentId = getManagerDepartmentId(managerId);
+
+        Request request = requestRepository.findDetailByIdForManager(id, departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new BadRequestException("Only PENDING requests can be rejected");
+        }
+        if (request.getType() != FLOW2_TYPE) {
+            throw new BadRequestException("Only PROJECT_TOPUP requests are handled by Manager");
+        }
+
+        request.setStatus(RequestStatus.REJECTED);
+        request.setRejectReason(req.getReason());
+
+        User actor = userService.getUserById(managerId);
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.REJECT)
+                .statusAfterAction(RequestStatus.REJECTED)
+                .comment(req.getReason())
+                .build());
+
+        requestRepository.save(request);
+        return requestMapper.toManagerRejectResponse(request);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_VIEW_APPROVED')")
+    public PageResponse<AccountantDisbursementSummaryResponse> getAccountantDisbursements(
+            RequestType type, String search, int page, int size) {
+
+        if (type != null && !FLOW1_TYPES.contains(type)) {
+            throw new BadRequestException("Accountant disbursements only support ADVANCE/EXPENSE/REIMBURSE");
+        }
+
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Specification<Request> spec = RequestSpecification.filterForAccountantDisbursements(type, search);
+
+        Page<AccountantDisbursementSummaryResponse> result = requestRepository
+                .findAll(spec, pageable)
+                .map(requestMapper::toAccountantDisbursementSummaryResponse);
+
+        return PageResponse.<AccountantDisbursementSummaryResponse>builder()
+                .items(result.getContent())
+                .total(result.getTotalElements())
+                .page(safePage)
+                .size(safeSize)
+                .totalPages(result.getTotalPages())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_VIEW_APPROVED')")
+    public AccountantDisbursementDetailResponse getAccountantDisbursementDetail(Long id) {
+        Request request = requestRepository.findDetailByIdForAccountant(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        List<RequestHistoryResponse> timeline = requestRepository.findHistoriesByRequestId(id)
+                .stream()
+                .map(requestMapper::toHistoryResponse)
+                .toList();
+
+        return requestMapper.toAccountantDisbursementDetailResponse(request, timeline);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_PAYOUT')")
+    public DisburseResponse disburse(Long id, Long accountantId, DisburseRequest req) {
+        profileService.verifyMyPin(accountantId, new VerifyMyPinRequest(req.getPin()));
+
+        Request request = requestRepository.findDetailByIdForAccountant(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.APPROVED_BY_TEAM_LEADER) {
+            throw new BadRequestException("Only APPROVED_BY_TEAM_LEADER requests can be disbursed");
+        }
+
+        BigDecimal amount = request.getApprovedAmount();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("approvedAmount is required before disbursement");
+        }
+
+        String description = (req.getNote() != null && !req.getNote().isBlank())
+                ? req.getNote().trim()
+                : request.getType() + " payout - " + request.getRequestCode();
+
+        String transactionCode = null;
+
+        if (request.getType() == RequestType.ADVANCE || request.getType() == RequestType.EXPENSE) {
+            Long projectId = request.getProject().getId();
+            Long requesterId = request.getRequester().getId();
+
+            var txn = walletService.settleAndTransfer(
+                    WalletOwnerType.PROJECT, projectId,
+                    WalletOwnerType.USER, requesterId,
+                    amount,
+                    TransactionType.REQUEST_PAYMENT,
+                    ReferenceType.REQUEST, request.getId(),
+                    description
+            );
+            transactionCode = txn.getTransactionCode();
+
+            if (request.getType() == RequestType.ADVANCE) {
+                AdvanceBalance advanceBalance = AdvanceBalance.builder()
+                        .user(request.getRequester())
+                        .advanceRequest(request)
+                        .originalAmount(amount)
+                        .remainingAmount(amount)
+                        .build();
+                advanceBalanceRepository.save(advanceBalance);
+            }
+        } else if (request.getType() == RequestType.REIMBURSE) {
+            AdvanceBalance advanceBalance = request.getAdvanceBalance();
+            if (advanceBalance == null) {
+                throw new BadRequestException("REIMBURSE request must have a linked advance balance");
+            }
+            advanceBalance.reimburse(amount);
+            advanceBalanceRepository.save(advanceBalance);
+        }
+
+        if (request.getPhase() != null && request.getCategory() != null) {
+            categoryBudgetService.incrementSpent(
+                    request.getPhase().getId(),
+                    request.getCategory().getId(),
+                    amount
+            );
+        }
+
+        User actor = userService.getUserById(accountantId);
+        request.setStatus(RequestStatus.PAID);
+        request.setPaidAt(LocalDateTime.now());
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.PAYOUT)
+                .statusAfterAction(RequestStatus.PAID)
+                .comment(req.getNote())
+                .build());
+
+        requestRepository.save(request);
+        return requestMapper.toDisburseResponse(request, transactionCode);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_PAYOUT')")
+    public AccountantRejectResponse accountantReject(Long id, Long accountantId, RejectRequestRequest req) {
+        Request request = requestRepository.findDetailByIdForAccountant(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.APPROVED_BY_TEAM_LEADER) {
+            throw new BadRequestException("Only APPROVED_BY_TEAM_LEADER requests can be rejected at this stage");
+        }
+
+        if (request.getType() == RequestType.ADVANCE || request.getType() == RequestType.EXPENSE) {
+            walletService.unlockFunds(
+                    WalletOwnerType.PROJECT,
+                    request.getProject().getId(),
+                    request.getApprovedAmount()
+            );
+        }
+
+        User actor = userService.getUserById(accountantId);
+        request.setStatus(RequestStatus.REJECTED);
+        request.setRejectReason(req.getReason());
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.REJECT)
+                .statusAfterAction(RequestStatus.REJECTED)
+                .comment(req.getReason())
+                .build());
+
+        requestRepository.save(request);
+        return requestMapper.toAccountantRejectResponse(request);
+    }
+
     private void validateCreateRequest(CreateRequestRequest req, User requester) {
         RequestType type = req.getType();
         validateRoleAllowedType(type, requester);
@@ -329,6 +783,14 @@ public class RequestServiceImpl implements RequestService {
             throw new BadRequestException("Requester department code is missing");
         }
         return requester.getDepartment().getCode();
+    }
+
+    private Long getManagerDepartmentId(Long managerId) {
+        User manager = userService.getUserById(managerId);
+        if (manager.getDepartment() == null || manager.getDepartment().getId() == null) {
+            throw new BadRequestException("Manager must belong to a department");
+        }
+        return manager.getDepartment().getId();
     }
 
     private void requireNotNull(Object value, String message) {

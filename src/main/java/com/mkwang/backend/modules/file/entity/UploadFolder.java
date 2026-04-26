@@ -6,11 +6,8 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum UploadFolder {
-    POST("posts"),
     AVATAR("avatars"),
-    DOCUMENT("documents"),
-    PRODUCT("products"),
-    REPORT("reports");
+    REQUEST("requests");
 
     private final String path;
 }

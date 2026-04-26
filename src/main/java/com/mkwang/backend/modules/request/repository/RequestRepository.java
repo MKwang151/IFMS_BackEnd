@@ -44,5 +44,56 @@ public interface RequestRepository extends JpaRepository<Request, Long>, JpaSpec
     List<RequestHistory> findHistoriesByRequestId(@Param("requestId") Long requestId);
 
     Optional<Request> findByIdAndRequesterId(Long id, Long requesterId);
+
+    @Query("""
+            SELECT DISTINCT r FROM Request r
+            LEFT JOIN FETCH r.requester u
+            LEFT JOIN FETCH u.profile up
+            LEFT JOIN FETCH up.avatarFile
+            LEFT JOIN FETCH r.project
+            LEFT JOIN FETCH r.phase
+            LEFT JOIN FETCH r.category
+            LEFT JOIN FETCH r.attachments att
+            LEFT JOIN FETCH att.file
+            WHERE r.id = :id AND r.project.id IN :projectIds
+            """)
+    Optional<Request> findDetailByIdForTl(
+            @Param("id") Long id,
+            @Param("projectIds") List<Long> projectIds);
+
+    @Query("""
+            SELECT DISTINCT r FROM Request r
+            LEFT JOIN FETCH r.requester u
+            LEFT JOIN FETCH u.profile up
+            LEFT JOIN FETCH up.avatarFile
+            LEFT JOIN FETCH r.project p
+            LEFT JOIN FETCH p.department
+            LEFT JOIN FETCH r.attachments att
+            LEFT JOIN FETCH att.file
+            WHERE r.id = :id
+              AND r.type = 'PROJECT_TOPUP'
+              AND p.department.id = :departmentId
+            """)
+    Optional<Request> findDetailByIdForManager(
+            @Param("id") Long id,
+            @Param("departmentId") Long departmentId);
+
+    @Query("""
+            SELECT DISTINCT r FROM Request r
+            LEFT JOIN FETCH r.requester u
+            LEFT JOIN FETCH u.profile up
+            LEFT JOIN FETCH up.avatarFile
+            LEFT JOIN FETCH u.department
+            LEFT JOIN FETCH r.project
+            LEFT JOIN FETCH r.phase
+            LEFT JOIN FETCH r.category
+            LEFT JOIN FETCH r.advanceBalance
+            LEFT JOIN FETCH r.attachments att
+            LEFT JOIN FETCH att.file
+            WHERE r.id = :id
+              AND r.status = 'APPROVED_BY_TEAM_LEADER'
+              AND r.type IN ('ADVANCE', 'EXPENSE', 'REIMBURSE')
+            """)
+    Optional<Request> findDetailByIdForAccountant(@Param("id") Long id);
 }
 

@@ -10,6 +10,7 @@ import com.mkwang.backend.modules.request.dto.response.RequestSummaryResponse;
 import com.mkwang.backend.modules.request.entity.RequestStatus;
 import com.mkwang.backend.modules.request.entity.RequestType;
 import com.mkwang.backend.modules.request.service.RequestService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -39,6 +40,10 @@ public class RequestController {
     private final RequestService requestService;
 
     @GetMapping
+    @Operation(
+        summary = "List my requests",
+        description = "Returns a paginated list of the authenticated user's requests. Filterable by type (ADVANCE/EXPENSE/REIMBURSE/PROJECT_TOPUP/DEPARTMENT_TOPUP), status, and keyword search on request code or description."
+    )
     public ResponseEntity<ApiResponse<PageResponse<RequestSummaryResponse>>> getMyRequests(
             @AuthenticationPrincipal UserDetailsAdapter principal,
             @RequestParam(required = false) RequestType type,
@@ -52,6 +57,10 @@ public class RequestController {
     }
 
     @GetMapping("/summary")
+    @Operation(
+        summary = "Get my request summary",
+        description = "Returns aggregated counts of the authenticated user's requests grouped by status (DRAFT, PENDING_TL, APPROVED, REJECTED, PAID, etc.). Role-aware: Team Leader also gets pending approval counts."
+    )
     public ResponseEntity<ApiResponse<Object>> getMyRequestSummary(
             @AuthenticationPrincipal UserDetailsAdapter principal) {
         String roleName = principal.getUser().getRole() != null ? principal.getUser().getRole().getName() : null;
@@ -61,6 +70,10 @@ public class RequestController {
     }
 
     @GetMapping("/{id}")
+    @Operation(
+        summary = "Get request detail",
+        description = "Returns full detail of a single request including approval history and attached files. Only the requester or an approver in the chain may access it."
+    )
     public ResponseEntity<ApiResponse<RequestDetailResponse>> getRequestDetail(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetailsAdapter principal) {
@@ -70,6 +83,10 @@ public class RequestController {
     }
 
     @PostMapping
+    @Operation(
+        summary = "Create a new request",
+        description = "Creates a new expense request (ADVANCE, EXPENSE, or REIMBURSE). Requires an ACTIVE project + ACTIVE phase with sufficient PhaseCategoryBudget. REIMBURSE must reference an open advance_balance_id."
+    )
     public ResponseEntity<ApiResponse<RequestDetailResponse>> createRequest(
             @Valid @RequestBody CreateRequestRequest req,
             @AuthenticationPrincipal UserDetailsAdapter principal) {
@@ -79,6 +96,10 @@ public class RequestController {
     }
 
     @PutMapping("/{id}")
+    @Operation(
+        summary = "Update a draft request",
+        description = "Updates amount, description, or category of a request that is still in DRAFT status. Only the original requester may update. Requests that have been submitted for approval cannot be modified."
+    )
     public ResponseEntity<ApiResponse<RequestDetailResponse>> updateRequest(
             @PathVariable Long id,
             @Valid @RequestBody UpdateRequestRequest req,
@@ -89,6 +110,10 @@ public class RequestController {
     }
 
     @DeleteMapping("/{id}")
+    @Operation(
+        summary = "Cancel a pending request",
+        description = "Cancels a request that is in DRAFT or PENDING_TL status. Only the original requester may cancel. Requests already approved or paid cannot be cancelled."
+    )
     public ResponseEntity<ApiResponse<Map<String, String>>> cancelRequest(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetailsAdapter principal) {

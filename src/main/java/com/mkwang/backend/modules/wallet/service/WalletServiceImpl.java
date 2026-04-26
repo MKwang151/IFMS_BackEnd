@@ -499,24 +499,32 @@ public class WalletServiceImpl implements WalletService {
     }
 
     // ══════════════════════════════════════════════════════════════════
-    //  SSE PUSH (private — best-effort, only for USER wallets)
+    //  SSE PUSH (private — best-effort)
+    //  USER wallets  → sendToUser (general /stream emitter)
+    //  Other wallets → sendToWalletSubscribers (dedicated wallet-stream emitters)
     // ══════════════════════════════════════════════════════════════════
 
     private void pushWalletUpdate(WalletOwnerType ownerType, Long ownerId) {
-        if (ownerType != WalletOwnerType.USER) return;
+        if (ownerType == WalletOwnerType.FLOAT_MAIN) return;
         try {
-            walletRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId).ifPresent(wallet ->
-                    sseService.sendToUser(ownerId, SseEvent.builder()
-                            .event(SseEventType.WALLET_UPDATED)
-                            .data(walletMapper.toWalletResponse(wallet))
-                            .build()));
+            walletRepository.findByOwnerTypeAndOwnerId(ownerType, ownerId).ifPresent(wallet -> {
+                SseEvent event = SseEvent.builder()
+                        .event(SseEventType.WALLET_UPDATED)
+                        .data(walletMapper.toWalletResponse(wallet))
+                        .build();
+                if (ownerType == WalletOwnerType.USER) {
+                    sseService.sendToUser(ownerId, event);
+                } else {
+                    sseService.sendToWalletSubscribers(walletKey(ownerType, ownerId), event);
+                }
+            });
         } catch (Exception e) {
-            log.warn("[WalletService] SSE wallet push failed for userId={}: {}", ownerId, e.getMessage());
+            log.warn("[WalletService] SSE wallet push failed for {}:{}: {}", ownerType, ownerId, e.getMessage());
         }
     }
 
     private void pushTransactionHistoryUpdate(WalletOwnerType ownerType, Long ownerId, Transaction txn) {
-        if (ownerType != WalletOwnerType.USER) return;
+        if (ownerType == WalletOwnerType.FLOAT_MAIN) return;
         try {
             LedgerEntry ownerEntry = txn.getEntries().stream()
                     .filter(entry -> entry.getWallet() != null
@@ -535,17 +543,26 @@ public class WalletServiceImpl implements WalletService {
             }
 
             if (ownerEntry == null) {
-                log.warn("[WalletService] No ledger entry found for transactionId={} userId={}", txn.getId(), ownerId);
+                log.warn("[WalletService] No ledger entry found for transactionId={} {}:{}", txn.getId(), ownerType, ownerId);
                 return;
             }
 
-            sseService.sendToUser(ownerId, SseEvent.builder()
+            SseEvent event = SseEvent.builder()
                     .event(SseEventType.TRANSACTION_CREATED)
                     .data(walletMapper.toLedgerEntryResponse(ownerEntry))
-                    .build());
+                    .build();
+            if (ownerType == WalletOwnerType.USER) {
+                sseService.sendToUser(ownerId, event);
+            } else {
+                sseService.sendToWalletSubscribers(walletKey(ownerType, ownerId), event);
+            }
         } catch (Exception e) {
-            log.warn("[WalletService] SSE transaction push failed for userId={}: {}", ownerId, e.getMessage());
+            log.warn("[WalletService] SSE transaction push failed for {}:{}: {}", ownerType, ownerId, e.getMessage());
         }
+    }
+
+    private static String walletKey(WalletOwnerType ownerType, Long ownerId) {
+        return ownerType.name() + ":" + ownerId;
     }
 
     // ══════════════════════════════════════════════════════════════════

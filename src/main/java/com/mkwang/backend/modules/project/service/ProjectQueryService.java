@@ -1,6 +1,7 @@
 package com.mkwang.backend.modules.project.service;
 
 import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryListResponse;
+import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectOptionResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhasesResponse;
 import com.mkwang.backend.modules.project.entity.ExpenseCategory;
@@ -20,11 +21,16 @@ public interface ProjectQueryService {
 
     ExpenseCategoryListResponse getPhaseCategories(User currentUser, Long phaseId);
 
+    // Returns system-wide categories + categories belonging to the given project, sorted by name.
+    List<ExpenseCategoryResponse> getAvailableCategoriesForProject(Long projectId);
+
     Project getProjectEntityById(Long projectId);
 
     ProjectPhase getPhaseEntityById(Long phaseId);
 
     ExpenseCategory getCategoryEntityById(Long categoryId);
+
+    List<Long> getLeaderProjectIds(Long leaderId);
 }
 
 

@@ -25,7 +25,8 @@ public class ExpenseCategory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    // Uniqueness enforced by DB partial indexes (uidx_expense_cat_name_system / uidx_expense_cat_name_project)
+    @Column(nullable = false)
     private String name;
 
     @Column(columnDefinition = "TEXT")
@@ -38,6 +39,14 @@ public class ExpenseCategory {
     @Column(name = "is_system_default", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     @Builder.Default
     private Boolean isSystemDefault = false;
+
+    /**
+     * Null = system-wide (visible to all projects).
+     * Non-null = project-specific (visible only within this project).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "project_id")
+    private Project project;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

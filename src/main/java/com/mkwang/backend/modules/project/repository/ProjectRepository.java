@@ -20,22 +20,41 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     List<Project> findByStatusOrderByCreatedAtDesc(ProjectStatus status);
 
-    @Query(
-            value = """
-                    select distinct p
-                    from Project p
-                    join p.members pm
-                    where pm.user.id = :userId
-                      and (:status is null or p.status = :status)
-                    order by p.createdAt desc
-                    """
-    )
+    @Query("""
+            select distinct p
+            from Project p
+            join p.members pm
+            where pm.user.id = :userId
+              and (:status is null or p.status = :status)
+            order by p.createdAt desc
+            """)
     List<Project> findMemberProjects(
             @Param("userId") Long userId,
             @Param("status") ProjectStatus status
     );
+
+    @Query("""
+            select distinct p
+            from Project p
+            left join fetch p.currentPhase
+            join p.members pm
+            where pm.user.id = :leaderId
+              and pm.projectRole = 'LEADER'
+              and (:status is null or p.status = :status)
+              and (:search is null or lower(p.name) like lower(concat('%', :search, '%'))
+                    or lower(p.projectCode) like lower(concat('%', :search, '%')))
+            order by p.createdAt desc
+            """)
+    List<Project> findLeaderProjects(
+            @Param("leaderId") Long leaderId,
+            @Param("status") ProjectStatus status,
+            @Param("search") String search
+    );
+
+    @Query("""
+            select count(pm)
+            from ProjectMember pm
+            where pm.project.id = :projectId
+            """)
+    int countMembersByProjectId(@Param("projectId") Long projectId);
 }
-
-
-
-

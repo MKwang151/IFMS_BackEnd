@@ -5,6 +5,7 @@ import com.mkwang.backend.common.exception.ResourceNotFoundException;
 import com.mkwang.backend.common.exception.UnauthorizedException;
 import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryListResponse;
 import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryOptionResponse;
+import com.mkwang.backend.modules.project.dto.response.ExpenseCategoryResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectOptionResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhaseOptionResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhasesResponse;
@@ -122,6 +123,25 @@ public class ProjectQueryServiceImpl implements ProjectQueryService {
     public ExpenseCategory getCategoryEntityById(Long categoryId) {
         return expenseCategoryRepository.findById(categoryId)
                 .orElseThrow(() -> new ResourceNotFoundException("ExpenseCategory", "id", categoryId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ExpenseCategoryResponse> getAvailableCategoriesForProject(Long projectId) {
+        return expenseCategoryRepository.findAvailableForProject(projectId).stream()
+                .map(cat -> new ExpenseCategoryResponse(
+                        cat.getId(),
+                        cat.getName(),
+                        cat.getDescription(),
+                        cat.getIsSystemDefault(),
+                        cat.getProject() != null ? cat.getProject().getId() : null))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> getLeaderProjectIds(Long leaderId) {
+        return projectMemberRepository.findProjectIdsByLeader(leaderId);
     }
 
     private ExpenseCategoryOptionResponse toCategoryOption(PhaseCategoryBudget budget) {
