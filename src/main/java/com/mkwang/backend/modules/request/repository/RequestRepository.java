@@ -95,5 +95,57 @@ public interface RequestRepository extends JpaRepository<Request, Long>, JpaSpec
               AND r.type IN ('ADVANCE', 'EXPENSE', 'REIMBURSE')
             """)
     Optional<Request> findDetailByIdForAccountant(@Param("id") Long id);
+
+    @Query("""
+            SELECT r.requester.id, COUNT(r)
+            FROM Request r
+            WHERE r.requester.id IN :userIds
+              AND r.status IN ('PENDING', 'APPROVED_BY_TEAM_LEADER')
+            GROUP BY r.requester.id
+            """)
+    List<Object[]> countPendingByRequesterIds(@Param("userIds") List<Long> userIds);
+
+    @Query("""
+            SELECT COUNT(r)
+            FROM Request r
+            WHERE r.requester.id = :userId
+              AND r.status IN ('PENDING', 'APPROVED_BY_TEAM_LEADER')
+            """)
+    int countPendingForRequester(@Param("userId") Long userId);
+
+    /**
+     * Count pending requests for a specific member scoped to a set of projects.
+     * Used by Team Leader team-members list to populate pendingRequestsCount.
+     * "Pending" = PENDING or APPROVED_BY_TEAM_LEADER (not yet disbursed).
+     */
+    @Query("""
+            SELECT COUNT(r) FROM Request r
+            WHERE r.requester.id = :userId
+              AND r.project.id IN :projectIds
+              AND r.status IN ('PENDING', 'APPROVED_BY_TEAM_LEADER')
+            """)
+    int countPendingForMemberInProjects(
+            @Param("userId") Long userId,
+            @Param("projectIds") List<Long> projectIds
+    );
+
+    /**
+     * Top-10 most recent requests for a member scoped to a set of projects.
+     * Used by Team Leader team-members detail to populate recentRequests.
+     */
+    @Query("""
+            SELECT r FROM Request r
+            LEFT JOIN FETCH r.project p
+            LEFT JOIN FETCH r.category
+            WHERE r.requester.id = :userId
+              AND p.id IN :projectIds
+            ORDER BY r.createdAt DESC
+            """)
+    List<Request> findTop10RecentByRequesterInProjects(
+            @Param("userId") Long userId,
+            @Param("projectIds") List<Long> projectIds,
+            org.springframework.data.domain.Pageable pageable
+    );
 }
+
 

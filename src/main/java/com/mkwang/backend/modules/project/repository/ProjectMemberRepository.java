@@ -5,6 +5,7 @@ import com.mkwang.backend.modules.project.entity.ProjectMemberId;
 import com.mkwang.backend.modules.project.entity.ProjectRole;
 import com.mkwang.backend.modules.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,7 +14,9 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ProjectMemberRepository extends JpaRepository<ProjectMember, ProjectMemberId> {
+public interface ProjectMemberRepository
+        extends JpaRepository<ProjectMember, ProjectMemberId>,
+                JpaSpecificationExecutor<ProjectMember> {
 
     boolean existsByProject_IdAndUser_Id(Long projectId, Long userId);
 
@@ -24,6 +27,21 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Pr
 
     Optional<ProjectMember> findByProject_IdAndUser_Id(Long projectId, Long userId);
 
+    List<ProjectMember> findByProject_IdAndProjectRole(Long projectId, ProjectRole projectRole);
+
+    List<ProjectMember> findByUser_IdAndProject_Department_IdOrderByJoinedAtDesc(Long userId, Long departmentId);
+
+    @Query("""
+            SELECT pm FROM ProjectMember pm
+            JOIN FETCH pm.project p
+            WHERE pm.id.projectId = :projectId
+              AND pm.id.userId = :userId
+            """)
+    Optional<ProjectMember> findWithProjectByProjectIdAndUserId(
+            @Param("projectId") Long projectId,
+            @Param("userId") Long userId
+    );
+
     @Query("""
             SELECT pm FROM ProjectMember pm
             JOIN FETCH pm.user u
@@ -33,6 +51,14 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Pr
             ORDER BY pm.joinedAt ASC
             """)
     List<ProjectMember> findMembersWithProfileByProjectId(@Param("projectId") Long projectId);
+
+    @Query("""
+            SELECT pm.project.id, COUNT(pm)
+            FROM ProjectMember pm
+            WHERE pm.project.id IN :projectIds
+            GROUP BY pm.project.id
+            """)
+    List<Object[]> countMembersByProjectIds(@Param("projectIds") List<Long> projectIds);
 
     @Query("""
             SELECT u FROM User u

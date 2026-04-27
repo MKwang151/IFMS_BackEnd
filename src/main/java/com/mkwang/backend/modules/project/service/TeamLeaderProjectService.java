@@ -10,6 +10,8 @@ import com.mkwang.backend.modules.project.dto.response.ProjectDetailResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectMemberResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhaseResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectSummaryResponse;
+import com.mkwang.backend.modules.project.dto.response.TeamMemberDetailResponse;
+import com.mkwang.backend.modules.project.dto.response.TeamMemberSummaryResponse;
 import com.mkwang.backend.modules.project.entity.ProjectStatus;
 import com.mkwang.backend.modules.user.entity.User;
 
@@ -33,4 +35,11 @@ public interface TeamLeaderProjectService {
     ProjectPhaseResponse createPhase(User currentUser, Long projectId, CreatePhaseRequest request);
 
     ProjectPhaseResponse updatePhase(User currentUser, Long projectId, Long phaseId, UpdatePhaseRequest request);
+
+    // ── 3.2 Team Members Overview ──────────────────────────────────────
+    PageResponse<TeamMemberSummaryResponse> getTeamMembers(
+            User currentUser, Long projectId, String search, int page, int limit);
+
+    TeamMemberDetailResponse getTeamMemberDetail(User currentUser, Long userId);
 }
+

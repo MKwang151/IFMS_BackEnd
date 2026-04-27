@@ -11,11 +11,15 @@ import com.mkwang.backend.modules.project.dto.request.CreatePhaseRequest;
 import com.mkwang.backend.modules.project.dto.request.UpdatePhaseRequest;
 import com.mkwang.backend.modules.project.dto.request.UpdateProjectMemberRequest;
 import com.mkwang.backend.modules.project.dto.response.AvailableMemberResponse;
+import com.mkwang.backend.modules.project.dto.response.MemberProjectInfoResponse;
+import com.mkwang.backend.modules.project.dto.response.MemberRecentRequestResponse;
 import com.mkwang.backend.modules.project.dto.response.PhaseDetailResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectDetailResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectMemberResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhaseResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectSummaryResponse;
+import com.mkwang.backend.modules.project.dto.response.TeamMemberDetailResponse;
+import com.mkwang.backend.modules.project.dto.response.TeamMemberSummaryResponse;
 import com.mkwang.backend.modules.project.entity.PhaseStatus;
 import com.mkwang.backend.modules.project.entity.Project;
 import com.mkwang.backend.modules.project.entity.ProjectMember;
@@ -24,18 +28,28 @@ import com.mkwang.backend.modules.project.entity.ProjectPhase;
 import com.mkwang.backend.modules.project.entity.ProjectRole;
 import com.mkwang.backend.modules.project.entity.ProjectStatus;
 import com.mkwang.backend.modules.project.repository.ProjectMemberRepository;
+import com.mkwang.backend.modules.project.repository.ProjectMemberSpecification;
 import com.mkwang.backend.modules.project.repository.ProjectPhaseRepository;
 import com.mkwang.backend.modules.project.repository.ProjectRepository;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
+import com.mkwang.backend.modules.request.entity.Request;
+import com.mkwang.backend.modules.request.repository.RequestRepository;
 import com.mkwang.backend.modules.user.entity.User;
 import com.mkwang.backend.modules.user.repository.UserRepository;
+import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
+import com.mkwang.backend.modules.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +60,8 @@ public class TeamLeaderProjectServiceImpl implements TeamLeaderProjectService {
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
     private final BusinessCodeGenerator businessCodeGenerator;
+    private final RequestRepository requestRepository;
+    private final WalletRepository walletRepository;
 
     // ─────────────────────────────────────────────────────────────────
     // GET /team-leader/projects
@@ -371,6 +387,178 @@ public class TeamLeaderProjectServiceImpl implements TeamLeaderProjectService {
 
         ProjectPhase saved = projectPhaseRepository.save(phase);
         return toPhaseResponse(saved);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // GET /team-leader/team-members
+    // ─────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('PROJECT_VIEW_ACTIVE')")
+    public PageResponse<TeamMemberSummaryResponse> getTeamMembers(
+            User currentUser, Long projectId, String search, int page, int limit) {
+
+        // 1. Determine TL's project scope
+        List<Long> leaderProjectIds = projectMemberRepository.findProjectIdsByLeader(currentUser.getId());
+        if (leaderProjectIds.isEmpty()) {
+            return PageResponse.<TeamMemberSummaryResponse>builder()
+                    .items(List.of()).total(0).page(page).size(limit).totalPages(0).build();
+        }
+
+        // 2. Validate optional projectId filter — must be within TL scope
+        if (projectId != null && !leaderProjectIds.contains(projectId)) {
+            return PageResponse.<TeamMemberSummaryResponse>builder()
+                    .items(List.of()).total(0).page(page).size(limit).totalPages(0).build();
+        }
+
+        // 3. Build Specification — DB-level filtering per CLAUDE.md convention
+        Specification<ProjectMember> spec = ProjectMemberSpecification.filter(
+                leaderProjectIds, projectId, search, currentUser.getId());
+
+        // 4. Fetch matching members from DB (no pagination yet — dedup required first)
+        //    We use findAll(spec) without pageable because deduplication by userId
+        //    across multiple projects must happen before slicing.
+        List<ProjectMember> matchedMembers = projectMemberRepository.findAll(spec);
+
+        // 5. Deduplicate by userId, keeping all their project memberships
+        Map<Long, List<ProjectMember>> byUser = new LinkedHashMap<>();
+        for (ProjectMember pm : matchedMembers) {
+            byUser.computeIfAbsent(pm.getUser().getId(), k -> new ArrayList<>()).add(pm);
+        }
+
+        // 6. Apply in-memory pagination on the deduplicated user list
+        List<Long> allUserIds = new ArrayList<>(byUser.keySet());
+        int total = allUserIds.size();
+        int fromIndex = Math.max(0, (page - 1) * limit);
+        int toIndex = Math.min(fromIndex + limit, total);
+        List<Long> pageUserIds = allUserIds.subList(fromIndex, toIndex);
+
+        // 7. Determine scope for pending-count query (narrow if projectId filter applied)
+        List<Long> pendingScope = (projectId != null) ? List.of(projectId) : leaderProjectIds;
+
+        // 8. Enrich each user: load profile data (already in session from spec query),
+        //    fetch wallet lockedBalance, and count pending requests
+        List<TeamMemberSummaryResponse> items = pageUserIds.stream()
+                .map(uid -> {
+                    List<ProjectMember> memberships = byUser.get(uid);
+                    // Profile is already loaded via the spec join (or lazy within same transaction)
+                    User u = memberships.get(0).getUser();
+                    UserProfile up = u.getProfile();
+
+                    BigDecimal debtBalance = walletRepository
+                            .findByOwnerTypeAndOwnerId(WalletOwnerType.USER, uid)
+                            .map(w -> w.getLockedBalance())
+                            .orElse(BigDecimal.ZERO);
+
+                    int pendingCount = requestRepository
+                            .countPendingForMemberInProjects(uid, pendingScope);
+
+                    List<MemberProjectInfoResponse> projects = memberships.stream()
+                            .map(pm -> new MemberProjectInfoResponse(
+                                    pm.getProject().getId(),
+                                    pm.getProject().getProjectCode(),
+                                    pm.getProject().getName(),
+                                    pm.getPosition(),
+                                    null  // omitted in list view
+                            ))
+                            .toList();
+
+                    return new TeamMemberSummaryResponse(
+                            u.getId(),
+                            u.getFullName(),
+                            u.getEmail(),
+                            up != null ? up.getEmployeeCode() : null,
+                            (up != null && up.getAvatarFile() != null) ? up.getAvatarFile().getUrl() : null,
+                            up != null ? up.getJobTitle() : null,
+                            u.getStatus().name(),
+                            debtBalance,
+                            pendingCount,
+                            projects
+                    );
+                })
+                .toList();
+
+        int totalPages = (int) Math.ceil((double) total / limit);
+        return PageResponse.<TeamMemberSummaryResponse>builder()
+                .items(items).total(total).page(page).size(limit).totalPages(totalPages).build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // GET /team-leader/team-members/:userId
+    // ─────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('PROJECT_VIEW_ACTIVE')")
+    public TeamMemberDetailResponse getTeamMemberDetail(User currentUser, Long userId) {
+        List<Long> leaderProjectIds = projectMemberRepository.findProjectIdsByLeader(currentUser.getId());
+        if (leaderProjectIds.isEmpty()) {
+            throw new ResourceNotFoundException("TeamMember", "userId", userId);
+        }
+
+        // Verify this user is actually a member of at least one of TL's projects
+        List<Long> memberProjectIds = projectMemberRepository.findMemberProjectIds(userId, leaderProjectIds);
+        if (memberProjectIds.isEmpty()) {
+            throw new ResourceNotFoundException("TeamMember", "userId", userId);
+        }
+
+        User member = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+        UserProfile profile = member.getProfile();
+
+        BigDecimal debtBalance = walletRepository
+                .findByOwnerTypeAndOwnerId(WalletOwnerType.USER, userId)
+                .map(w -> w.getLockedBalance())
+                .orElse(BigDecimal.ZERO);
+
+        int pendingCount = requestRepository.countPendingForMemberInProjects(userId, leaderProjectIds);
+
+        // Build projects across ALL leader's projects for this member (with joinedAt)
+        List<MemberProjectInfoResponse> allProjects = new ArrayList<>();
+        for (Long pid : memberProjectIds) {
+            projectMemberRepository.findWithProjectByProjectIdAndUserId(pid, userId).ifPresent(pm ->
+                    allProjects.add(new MemberProjectInfoResponse(
+                            pm.getProject().getId(),
+                            pm.getProject().getProjectCode(),
+                            pm.getProject().getName(),
+                            pm.getPosition(),
+                            pm.getJoinedAt()
+                    ))
+            );
+        }
+
+        // Recent requests: top 10
+        List<Request> recentReqs = requestRepository.findTop10RecentByRequesterInProjects(
+                userId, leaderProjectIds, PageRequest.of(0, 10));
+
+        List<MemberRecentRequestResponse> recentRequests = recentReqs.stream()
+                .map(r -> new MemberRecentRequestResponse(
+                        r.getId(),
+                        r.getRequestCode(),
+                        r.getType().name(),
+                        r.getAmount(),
+                        r.getStatus().name(),
+                        r.getProject() != null ? r.getProject().getProjectCode() : null,
+                        r.getCategory() != null ? r.getCategory().getName() : null,
+                        r.getCreatedAt()
+                ))
+                .toList();
+
+        return new TeamMemberDetailResponse(
+                member.getId(),
+                member.getFullName(),
+                member.getEmail(),
+                profile != null ? profile.getEmployeeCode() : null,
+                (profile != null && profile.getAvatarFile() != null) ? profile.getAvatarFile().getUrl() : null,
+                profile != null ? profile.getJobTitle() : null,
+                profile != null ? profile.getPhoneNumber() : null,
+                member.getStatus().name(),
+                debtBalance,
+                pendingCount,
+                allProjects,
+                recentRequests
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────

@@ -14,10 +14,13 @@ import com.mkwang.backend.modules.user.dto.response.OnboardUserResponse;
 import com.mkwang.backend.modules.user.entity.*;
 import com.mkwang.backend.modules.user.repository.RoleRepository;
 import com.mkwang.backend.modules.user.repository.UserRepository;
+import com.mkwang.backend.modules.user.repository.UserSpecification;
 import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
 import com.mkwang.backend.modules.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -26,6 +29,7 @@ import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import java.security.SecureRandom;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -107,6 +111,26 @@ public class UserServiceImpl implements UserService {
     public User getUserById(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<User> getDepartmentMembers(Long departmentId, Long excludedUserId, String search, Pageable pageable) {
+        var specification = UserSpecification.filterDepartmentMembers(departmentId, excludedUserId, search);
+        return userRepository.findAll(specification, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public User getDepartmentUserById(Long departmentId, Long userId) {
+        return userRepository.findByIdAndDepartmentIdWithProfile(userId, departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> getActiveTeamLeadersByDepartmentId(Long departmentId) {
+        return userRepository.findActiveTeamLeadersByDepartmentId(departmentId);
     }
 
     // ── Private helpers ──────────────────────────────────────────

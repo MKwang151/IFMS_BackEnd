@@ -12,6 +12,8 @@ import com.mkwang.backend.modules.project.dto.response.ProjectDetailResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectMemberResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectPhaseResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectSummaryResponse;
+import com.mkwang.backend.modules.project.dto.response.TeamMemberDetailResponse;
+import com.mkwang.backend.modules.project.dto.response.TeamMemberSummaryResponse;
 import com.mkwang.backend.modules.project.entity.ProjectStatus;
 import com.mkwang.backend.modules.project.service.TeamLeaderProjectService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -167,6 +169,45 @@ public class TeamLeaderProjectController {
 
         ProjectPhaseResponse result = teamLeaderProjectService.updatePhase(
                 principal.getUser(), id, phaseId, request);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // 3.2 Team Members Overview
+    // ─────────────────────────────────────────────────────────────────
+
+    @GetMapping("/team-members")
+    @Operation(
+            summary = "List all team members (deduplicated)",
+            description = "Returns a paginated list of all members across all projects where the current user is LEADER. " +
+                    "Deduplicates by userId so members appearing in multiple projects appear once with a projects[] array. " +
+                    "Optionally filter by projectId to show only members of a specific project. " +
+                    "Each item includes debtBalance (wallet lockedBalance) and pendingRequestsCount."
+    )
+    public ResponseEntity<ApiResponse<PageResponse<TeamMemberSummaryResponse>>> getTeamMembers(
+            @AuthenticationPrincipal UserDetailsAdapter principal,
+            @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int limit) {
+
+        PageResponse<TeamMemberSummaryResponse> result = teamLeaderProjectService.getTeamMembers(
+                principal.getUser(), projectId, search, page, limit);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/team-members/{userId}")
+    @Operation(
+            summary = "Get team member detail",
+            description = "Returns full detail for a single team member: profile, projects in TL scope, debtBalance, pendingRequestsCount, " +
+                    "and the 10 most recent requests submitted to any of the Team Leader's projects."
+    )
+    public ResponseEntity<ApiResponse<TeamMemberDetailResponse>> getTeamMemberDetail(
+            @AuthenticationPrincipal UserDetailsAdapter principal,
+            @PathVariable Long userId) {
+
+        TeamMemberDetailResponse result = teamLeaderProjectService.getTeamMemberDetail(
+                principal.getUser(), userId);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 }

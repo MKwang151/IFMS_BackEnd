@@ -44,4 +44,12 @@ public interface WalletRepository extends JpaRepository<Wallet, Long> {
    */
   @Query("SELECT COALESCE(SUM(w.balance), 0) FROM Wallet w WHERE w.ownerType != :excludeType")
   java.math.BigDecimal sumAllBalancesExcept(@Param("excludeType") WalletOwnerType excludeType);
+
+  @Query("""
+      SELECT w.ownerId, COALESCE(w.lockedBalance, 0)
+      FROM Wallet w
+      WHERE w.ownerType = 'USER'
+        AND w.ownerId IN :userIds
+      """)
+  java.util.List<Object[]> findLockedBalancesForUsers(@Param("userIds") java.util.List<Long> userIds);
 }
