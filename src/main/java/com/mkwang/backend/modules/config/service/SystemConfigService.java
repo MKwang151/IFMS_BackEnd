@@ -88,4 +88,17 @@ public interface SystemConfigService {
      * Dùng sau khi import bulk config hoặc khi deploy config mới.
      */
     void evictAll();
+
+    /**
+     * Lấy toàn bộ danh sách config cho admin (yêu cầu SYSTEM_CONFIG_MANAGE).
+     */
+    List<SystemConfig> getAllForAdmin();
+
+    /**
+     * Cập nhật hàng loạt config theo map key → value.
+     * Chỉ cập nhật các key đã tồn tại; throw ResourceNotFoundException nếu key không có.
+     * Evict toàn bộ cache sau khi hoàn tất.
+     * Returns danh sách đầy đủ configs sau update.
+     */
+    List<SystemConfig> batchUpdate(java.util.Map<String, String> configs);
 }

@@ -97,6 +97,17 @@ public interface RequestRepository extends JpaRepository<Request, Long>, JpaSpec
     Optional<Request> findDetailByIdForAccountant(@Param("id") Long id);
 
     @Query("""
+            SELECT r FROM Request r
+            LEFT JOIN FETCH r.requester u
+            LEFT JOIN FETCH u.profile up
+            LEFT JOIN FETCH up.avatarFile
+            LEFT JOIN FETCH u.department
+            WHERE r.id = :id
+              AND r.type = 'DEPARTMENT_TOPUP'
+            """)
+    Optional<Request> findDetailByIdForCfo(@Param("id") Long id);
+
+    @Query("""
             SELECT r.requester.id, COUNT(r)
             FROM Request r
             WHERE r.requester.id IN :userIds

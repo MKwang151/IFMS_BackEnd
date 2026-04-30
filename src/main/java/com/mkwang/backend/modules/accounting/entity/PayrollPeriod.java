@@ -55,6 +55,10 @@ public class PayrollPeriod extends BaseEntity {
   @Builder.Default
   private PayrollStatus status = PayrollStatus.DRAFT;
 
+  @Column(name = "netting_applied", nullable = false)
+  @Builder.Default
+  private boolean nettingApplied = false;
+
   @OneToMany(mappedBy = "period", cascade = CascadeType.ALL, orphanRemoval = true)
   @Builder.Default
   private List<Payslip> payslips = new ArrayList<>();

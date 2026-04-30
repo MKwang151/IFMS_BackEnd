@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -12,6 +13,7 @@ public class PayslipDetailResponse {
     private Long id;
     private String payslipCode;
     private Long periodId;
+    private String periodCode;
     private String periodName;
     private Integer month;
     private Integer year;
@@ -28,5 +30,7 @@ public class PayslipDetailResponse {
 
     private BigDecimal finalNetSalary;
     private PayslipEmployeeResponse employee;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }
 

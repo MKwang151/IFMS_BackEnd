@@ -47,4 +47,16 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
               AND u.department.id = :departmentId
             """)
     Optional<User> findByIdAndDepartmentIdWithProfile(@Param("userId") Long userId, @Param("departmentId") Long departmentId);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.department.id = :departmentId")
+    long countByDepartmentId(@Param("departmentId") Long departmentId);
+
+    @Query("""
+            SELECT u FROM User u
+            LEFT JOIN FETCH u.profile up
+            LEFT JOIN FETCH up.avatarFile
+            WHERE u.department.id = :departmentId
+            ORDER BY u.fullName ASC
+            """)
+    List<User> findByDepartmentIdWithProfile(@Param("departmentId") Long departmentId);
 }

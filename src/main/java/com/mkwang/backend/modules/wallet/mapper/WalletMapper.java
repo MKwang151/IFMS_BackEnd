@@ -1,5 +1,7 @@
 package com.mkwang.backend.modules.wallet.mapper;
 
+import com.mkwang.backend.modules.wallet.dto.response.AccountantLedgerEntryResponse;
+import com.mkwang.backend.modules.wallet.dto.response.AccountantLedgerItemResponse;
 import com.mkwang.backend.modules.wallet.dto.response.LedgerEntryResponse;
 import com.mkwang.backend.modules.wallet.dto.response.TransactionResponse;
 import com.mkwang.backend.modules.wallet.dto.response.WalletResponse;
@@ -45,5 +47,33 @@ public class WalletMapper {
                 .balanceAfter(entry.getBalanceAfter())
                 .createdAt(entry.getCreatedAt())
                 .build();
+    }
+
+    public AccountantLedgerEntryResponse toAccountantLedgerEntryResponse(LedgerEntry entry) {
+        return new AccountantLedgerEntryResponse(
+                entry.getId(),
+                entry.getTransaction().getTransactionCode(),
+                entry.getDirection(),
+                entry.getAmount(),
+                entry.getBalanceAfter(),
+                entry.getWallet().getOwnerType(),
+                entry.getWallet().getOwnerId(),
+                entry.getCreatedAt()
+        );
+    }
+
+    public AccountantLedgerItemResponse toAccountantLedgerItemResponse(LedgerEntry entry) {
+        return new AccountantLedgerItemResponse(
+                entry.getId(),
+                entry.getTransaction().getTransactionCode(),
+                entry.getTransaction().getType(),
+                entry.getTransaction().getStatus(),
+                entry.getDirection(),
+                entry.getAmount(),
+                entry.getBalanceAfter(),
+                entry.getWallet().getOwnerType(),
+                entry.getWallet().getOwnerId(),
+                entry.getCreatedAt()
+        );
     }
 }

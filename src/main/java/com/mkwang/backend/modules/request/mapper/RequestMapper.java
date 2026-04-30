@@ -4,6 +4,10 @@ import com.mkwang.backend.modules.request.dto.response.AttachmentResponse;
 import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementDetailResponse;
 import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementSummaryResponse;
 import com.mkwang.backend.modules.request.dto.response.AccountantRejectResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApprovalDetailResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApprovalSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApproveResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoRejectResponse;
 import com.mkwang.backend.modules.request.dto.response.DisburseResponse;
 import com.mkwang.backend.modules.request.dto.response.ManagerApprovalDetailResponse;
 import com.mkwang.backend.modules.request.dto.response.ManagerApprovalSummaryResponse;
@@ -407,6 +411,100 @@ public class RequestMapper {
 
     public AccountantRejectResponse toAccountantRejectResponse(Request request) {
         return AccountantRejectResponse.builder()
+                .id(request.getId())
+                .requestCode(request.getRequestCode())
+                .status(request.getStatus())
+                .rejectReason(request.getRejectReason())
+                .build();
+    }
+
+    public CfoApprovalSummaryResponse toCfoApprovalSummaryResponse(Request request) {
+        User user = request.getRequester();
+        UserProfile profile = user != null ? user.getProfile() : null;
+        Department department = user != null ? user.getDepartment() : null;
+
+        return CfoApprovalSummaryResponse.builder()
+                .id(request.getId())
+                .requestCode(request.getRequestCode())
+                .type(request.getType())
+                .status(request.getStatus())
+                .amount(request.getAmount())
+                .description(request.getDescription())
+                .requester(CfoApprovalSummaryResponse.RequesterSnippet.builder()
+                        .id(user != null ? user.getId() : null)
+                        .fullName(user != null ? user.getFullName() : null)
+                        .avatar(resolveAvatar(profile))
+                        .employeeCode(profile != null ? profile.getEmployeeCode() : null)
+                        .jobTitle(profile != null ? profile.getJobTitle() : null)
+                        .email(user != null ? user.getEmail() : null)
+                        .build())
+                .department(department != null
+                        ? CfoApprovalSummaryResponse.DepartmentSnippet.builder()
+                        .id(department.getId())
+                        .name(department.getName())
+                        .code(department.getCode())
+                        .totalAvailableBalance(department.getTotalAvailableBalance())
+                        .build()
+                        : null)
+                .createdAt(request.getCreatedAt())
+                .build();
+    }
+
+    public CfoApprovalDetailResponse toCfoApprovalDetailResponse(
+            Request request, List<RequestHistoryResponse> timeline, java.math.BigDecimal cfBalance) {
+
+        User user = request.getRequester();
+        UserProfile profile = user != null ? user.getProfile() : null;
+        Department department = user != null ? user.getDepartment() : null;
+
+        return CfoApprovalDetailResponse.builder()
+                .id(request.getId())
+                .requestCode(request.getRequestCode())
+                .type(request.getType())
+                .status(request.getStatus())
+                .amount(request.getAmount())
+                .approvedAmount(request.getApprovedAmount())
+                .description(request.getDescription())
+                .rejectReason(request.getRejectReason())
+                .requester(CfoApprovalDetailResponse.RequesterDetail.builder()
+                        .id(user != null ? user.getId() : null)
+                        .fullName(user != null ? user.getFullName() : null)
+                        .avatar(resolveAvatar(profile))
+                        .employeeCode(profile != null ? profile.getEmployeeCode() : null)
+                        .jobTitle(profile != null ? profile.getJobTitle() : null)
+                        .email(user != null ? user.getEmail() : null)
+                        .departmentName(department != null ? department.getName() : null)
+                        .build())
+                .department(department != null
+                        ? CfoApprovalDetailResponse.DepartmentDetail.builder()
+                        .id(department.getId())
+                        .name(department.getName())
+                        .code(department.getCode())
+                        .totalProjectQuota(department.getTotalProjectQuota())
+                        .totalAvailableBalance(department.getTotalAvailableBalance())
+                        .build()
+                        : null)
+                .companyFund(CfoApprovalDetailResponse.CompanyFundSnapshot.builder()
+                        .balance(cfBalance)
+                        .build())
+                .timeline(timeline)
+                .createdAt(request.getCreatedAt())
+                .updatedAt(request.getUpdatedAt())
+                .build();
+    }
+
+    public CfoApproveResponse toCfoApproveResponse(Request request, String comment) {
+        return CfoApproveResponse.builder()
+                .id(request.getId())
+                .requestCode(request.getRequestCode())
+                .status(request.getStatus())
+                .approvedAmount(request.getApprovedAmount())
+                .comment(comment)
+                .build();
+    }
+
+    public CfoRejectResponse toCfoRejectResponse(Request request) {
+        return CfoRejectResponse.builder()
                 .id(request.getId())
                 .requestCode(request.getRequestCode())
                 .status(request.getStatus())

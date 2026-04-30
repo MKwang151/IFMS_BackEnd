@@ -5,15 +5,18 @@ import com.mkwang.backend.modules.config.entity.SystemConfig;
 import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
-
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -37,6 +40,7 @@ public class SystemConfigServiceImpl implements SystemConfigService {
     private static final String CACHE_NAME = "system_configs";
 
     private final SystemConfigRepository systemConfigRepository;
+    private final CacheManager cacheManager;
 
     // ══════════════════════════════════════════════════════════════════
     // LIST ALL (no cache — always fresh for admin)
@@ -184,5 +188,28 @@ public class SystemConfigServiceImpl implements SystemConfigService {
     @CacheEvict(cacheNames = CACHE_NAME, allEntries = true)
     public void evictAll() {
         log.info("[SystemConfig] Cache cleared — all system_configs entries evicted");
+    }
+
+    @Override
+    @PreAuthorize("hasAuthority('SYSTEM_CONFIG_MANAGE')")
+    @Transactional(readOnly = true)
+    public List<SystemConfig> getAllForAdmin() {
+        return systemConfigRepository.findAll();
+    }
+
+    @Override
+    @PreAuthorize("hasAuthority('SYSTEM_CONFIG_MANAGE')")
+    @Transactional
+    public List<SystemConfig> batchUpdate(Map<String, String> configs) {
+        configs.forEach((key, value) -> {
+            SystemConfig config = systemConfigRepository.findById(key)
+                    .orElseThrow(() -> new ResourceNotFoundException("SystemConfig", "key", key));
+            config.setValue(value);
+            systemConfigRepository.save(config);
+            log.info("[SystemConfig] batch updated key='{}' value='{}'", key, value);
+        });
+        Cache cache = cacheManager.getCache(CACHE_NAME);
+        if (cache != null) cache.clear();
+        return systemConfigRepository.findAll();
     }
 }

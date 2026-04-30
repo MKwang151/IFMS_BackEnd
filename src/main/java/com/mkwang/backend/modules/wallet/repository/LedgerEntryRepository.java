@@ -3,7 +3,10 @@ package com.mkwang.backend.modules.wallet.repository;
 import com.mkwang.backend.modules.wallet.entity.LedgerEntry;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,7 +16,10 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> {
+public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long>, JpaSpecificationExecutor<LedgerEntry> {
+
+  @EntityGraph(attributePaths = {"transaction", "wallet"})
+  Page<LedgerEntry> findAll(Specification<LedgerEntry> spec, Pageable pageable);
 
   /**
    * Paginated transaction history for a wallet — used for statement display.
@@ -41,4 +47,52 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
    */
   @Query("SELECT e FROM LedgerEntry e WHERE e.wallet.id = :walletId ORDER BY e.createdAt DESC LIMIT 1")
   Optional<LedgerEntry> findLatestByWalletId(@Param("walletId") Long walletId);
+
+  /**
+   * Batch-fetch ledger entries for a set of transactions scoped to one wallet.
+   * Used by the accountant ledger list to compute signed amount and balanceAfter
+   * from the CompanyFund perspective without N+1 queries.
+   */
+  @Query("SELECT e FROM LedgerEntry e WHERE e.transaction.id IN :transactionIds AND e.wallet.id = :walletId")
+  List<LedgerEntry> findByTransactionIdsAndWalletId(
+      @Param("transactionIds") List<Long> transactionIds,
+      @Param("walletId") Long walletId);
+
+  /**
+   * Sum of CREDIT entries for a wallet in a date range — accountant inflow.
+   */
+  @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e " +
+         "WHERE e.wallet.id = :walletId AND e.direction = 'CREDIT' " +
+         "AND e.createdAt >= :from AND e.createdAt <= :to")
+  java.math.BigDecimal sumCreditByWalletAndRange(
+      @Param("walletId") Long walletId,
+      @Param("from") java.time.LocalDateTime from,
+      @Param("to") java.time.LocalDateTime to);
+
+  /**
+   * Sum of DEBIT entries for a wallet in a date range — accountant outflow.
+   */
+  @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e " +
+         "WHERE e.wallet.id = :walletId AND e.direction = 'DEBIT' " +
+         "AND e.createdAt >= :from AND e.createdAt <= :to")
+  java.math.BigDecimal sumDebitByWalletAndRange(
+      @Param("walletId") Long walletId,
+      @Param("from") java.time.LocalDateTime from,
+      @Param("to") java.time.LocalDateTime to);
+
+  /**
+   * Count of distinct transactions touching a wallet in a date range.
+   */
+  @Query("SELECT COUNT(DISTINCT e.transaction.id) FROM LedgerEntry e " +
+         "WHERE e.wallet.id = :walletId AND e.createdAt >= :from AND e.createdAt <= :to")
+  long countTransactionsByWalletAndRange(
+      @Param("walletId") Long walletId,
+      @Param("from") java.time.LocalDateTime from,
+      @Param("to") java.time.LocalDateTime to);
+
+  /**
+   * All entries for a transaction with wallet eagerly fetched — for detail view.
+   */
+  @Query("SELECT e FROM LedgerEntry e JOIN FETCH e.wallet WHERE e.transaction.id = :transactionId")
+  List<LedgerEntry> findByTransactionIdWithWallet(@Param("transactionId") Long transactionId);
 }

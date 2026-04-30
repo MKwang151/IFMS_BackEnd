@@ -1,6 +1,7 @@
 package com.mkwang.backend.modules.user.repository;
 
 import com.mkwang.backend.modules.user.entity.User;
+import com.mkwang.backend.modules.user.entity.UserStatus;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.domain.Specification;
@@ -16,6 +17,15 @@ public class UserSpecification {
 
     public static Specification<User> excludeUserId(Long excludedUserId) {
         return (root, query, cb) -> cb.notEqual(root.get("id"), excludedUserId);
+    }
+
+    public static Specification<User> hasRoleName(String roleName) {
+        return (root, query, cb) -> cb.equal(root.get("role").get("name"), roleName);
+    }
+
+    public static Specification<User> hasStatus(UserStatus status) {
+        return (root, query, cb) ->
+                status == null ? null : cb.equal(root.get("status"), status);
     }
 
     public static Specification<User> matchesSearch(String search) {
@@ -48,6 +58,25 @@ public class UserSpecification {
             spec = spec.and(excludeUserId(excludedUserId));
         }
 
+        if (search != null && !search.isBlank()) {
+            spec = spec.and(matchesSearch(search.trim()));
+        }
+
+        return spec;
+    }
+
+    public static Specification<User> adminFilter(String roleName, Long departmentId, UserStatus status, String search) {
+        Specification<User> spec = Specification.where(fetchProfile());
+
+        if (roleName != null && !roleName.isBlank()) {
+            spec = spec.and(hasRoleName(roleName));
+        }
+        if (departmentId != null) {
+            spec = spec.and(hasDepartmentId(departmentId));
+        }
+        if (status != null) {
+            spec = spec.and(hasStatus(status));
+        }
         if (search != null && !search.isBlank()) {
             spec = spec.and(matchesSearch(search.trim()));
         }

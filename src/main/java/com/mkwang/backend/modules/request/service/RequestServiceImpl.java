@@ -23,6 +23,10 @@ import com.mkwang.backend.modules.request.dto.request.UpdateRequestRequest;
 import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementDetailResponse;
 import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementSummaryResponse;
 import com.mkwang.backend.modules.request.dto.response.AccountantRejectResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApprovalDetailResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApprovalSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApproveResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoRejectResponse;
 import com.mkwang.backend.modules.request.dto.response.DisburseResponse;
 import com.mkwang.backend.modules.request.dto.response.EmployeeRequestSummaryResponse;
 import com.mkwang.backend.modules.request.dto.response.ManagerApprovalDetailResponse;
@@ -539,6 +543,127 @@ public class RequestServiceImpl implements RequestService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_DEPT_TOPUP')")
+    public PageResponse<CfoApprovalSummaryResponse> getCfoApprovals(String search, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Specification<Request> spec = RequestSpecification.filterForCfoApprovals(search);
+
+        Page<CfoApprovalSummaryResponse> result = requestRepository
+                .findAll(spec, pageable)
+                .map(requestMapper::toCfoApprovalSummaryResponse);
+
+        return PageResponse.<CfoApprovalSummaryResponse>builder()
+                .items(result.getContent())
+                .total(result.getTotalElements())
+                .page(safePage)
+                .size(safeSize)
+                .totalPages(result.getTotalPages())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_DEPT_TOPUP')")
+    public CfoApprovalDetailResponse getCfoApprovalDetail(Long id) {
+        Request request = requestRepository.findDetailByIdForCfo(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        List<RequestHistoryResponse> timeline = requestRepository.findHistoriesByRequestId(id)
+                .stream()
+                .map(requestMapper::toHistoryResponse)
+                .toList();
+
+        java.math.BigDecimal cfBalance = walletService.getWallet(
+                com.mkwang.backend.modules.wallet.entity.WalletOwnerType.COMPANY_FUND, 1L).getBalance();
+
+        return requestMapper.toCfoApprovalDetailResponse(request, timeline, cfBalance);
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_DEPT_TOPUP')")
+    public CfoApproveResponse approveCfoRequest(Long id, Long cfoId, ApproveRequestRequest req) {
+        Request request = requestRepository.findDetailByIdForCfo(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new BadRequestException("Only PENDING requests can be approved");
+        }
+
+        BigDecimal effectiveAmount = req.getApprovedAmount() != null ? req.getApprovedAmount() : request.getAmount();
+        if (effectiveAmount.compareTo(request.getAmount()) > 0) {
+            throw new BadRequestException("approvedAmount cannot exceed requested amount");
+        }
+
+        User actor = userService.getUserById(cfoId);
+
+        request.setStatus(RequestStatus.APPROVED_BY_CFO);
+        request.setApprovedAmount(effectiveAmount);
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.APPROVE)
+                .statusAfterAction(RequestStatus.APPROVED_BY_CFO)
+                .comment(req.getComment())
+                .build());
+
+        CfoApproveResponse response = requestMapper.toCfoApproveResponse(request, req.getComment());
+
+        Long departmentId = request.getRequester().getDepartment().getId();
+        walletService.transfer(
+                WalletOwnerType.COMPANY_FUND, 1L,
+                WalletOwnerType.DEPARTMENT, departmentId,
+                effectiveAmount,
+                TransactionType.DEPT_QUOTA_ALLOCATION,
+                ReferenceType.REQUEST, request.getId(),
+                "DEPARTMENT_TOPUP approved by CFO — request " + request.getRequestCode()
+        );
+
+        request.setStatus(RequestStatus.PAID);
+        request.setPaidAt(LocalDateTime.now());
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.PAYOUT)
+                .statusAfterAction(RequestStatus.PAID)
+                .comment("Auto-paid on CFO approval")
+                .build());
+
+        requestRepository.save(request);
+        return response;
+    }
+
+    @Override
+    @Transactional
+    @PreAuthorize("hasAuthority('REQUEST_APPROVE_DEPT_TOPUP')")
+    public CfoRejectResponse rejectCfoRequest(Long id, Long cfoId, RejectRequestRequest req) {
+        Request request = requestRepository.findDetailByIdForCfo(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new BadRequestException("Only PENDING requests can be rejected");
+        }
+
+        request.setStatus(RequestStatus.REJECTED);
+        request.setRejectReason(req.getReason());
+
+        User actor = userService.getUserById(cfoId);
+        request.getHistories().add(RequestHistory.builder()
+                .request(request)
+                .actor(actor)
+                .action(RequestAction.REJECT)
+                .statusAfterAction(RequestStatus.REJECTED)
+                .comment(req.getReason())
+                .build());
+
+        requestRepository.save(request);
+        return requestMapper.toCfoRejectResponse(request);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('REQUEST_VIEW_APPROVED')")
     public PageResponse<AccountantDisbursementSummaryResponse> getAccountantDisbursements(
             RequestType type, String search, int page, int size) {
@@ -802,6 +927,24 @@ public class RequestServiceImpl implements RequestService {
     private void requireNull(Object value, String message) {
         if (value != null) {
             throw new BadRequestException(message);
+        }
+    }
+
+    @Override
+    public java.math.BigDecimal getTotalOutstandingDebt(Long userId) {
+        return advanceBalanceRepository.sumRemainingByUserId(userId);
+    }
+
+    @Override
+    public void applyPayrollDeduction(Long userId, java.math.BigDecimal amount) {
+        List<com.mkwang.backend.modules.request.entity.AdvanceBalance> advances =
+                advanceBalanceRepository.findUnsettledByUserIdForUpdate(userId);
+        java.math.BigDecimal remaining = amount;
+        for (com.mkwang.backend.modules.request.entity.AdvanceBalance advance : advances) {
+            if (remaining.compareTo(java.math.BigDecimal.ZERO) <= 0) break;
+            java.math.BigDecimal deduct = remaining.min(advance.getRemainingAmount());
+            advance.returnCash(deduct);
+            remaining = remaining.subtract(deduct);
         }
     }
 }

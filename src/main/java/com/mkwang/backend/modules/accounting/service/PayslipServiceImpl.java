@@ -62,7 +62,20 @@ public class PayslipServiceImpl implements PayslipService {
     public PayslipDetailResponse getMyPayslipById(Long userId, Long payslipId) {
         Payslip payslip = payslipRepository.findMyPayslipDetailById(userId, payslipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payslip", "id", payslipId));
+        return toDetailResponse(payslip);
+    }
 
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('PAYROLL_MANAGE')")
+    public PayslipDetailResponse getPayslipById(Long payslipId) {
+        Payslip payslip = payslipRepository.findPayslipDetailById(payslipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payslip", "id", payslipId));
+
+        return toDetailResponse(payslip);
+    }
+
+    private PayslipDetailResponse toDetailResponse(Payslip payslip) {
         BigDecimal totalEarnings = safe(payslip.getBaseSalary())
                 .add(safe(payslip.getBonus()))
                 .add(safe(payslip.getAllowance()));
@@ -87,6 +100,7 @@ public class PayslipServiceImpl implements PayslipService {
                 .id(payslip.getId())
                 .payslipCode(payslip.getPayslipCode())
                 .periodId(payslip.getPeriod().getId())
+                .periodCode(payslip.getPeriod().getPeriodCode())
                 .periodName(payslip.getPeriod().getName())
                 .month(payslip.getPeriod().getMonth())
                 .year(payslip.getPeriod().getYear())
@@ -100,6 +114,8 @@ public class PayslipServiceImpl implements PayslipService {
                 .totalDeduction(totalDeduction)
                 .finalNetSalary(safe(payslip.getFinalNetSalary()))
                 .employee(employee)
+                .createdAt(payslip.getCreatedAt())
+                .updatedAt(payslip.getUpdatedAt())
                 .build();
     }
 

@@ -9,6 +9,10 @@ import com.mkwang.backend.modules.request.dto.request.UpdateRequestRequest;
 import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementDetailResponse;
 import com.mkwang.backend.modules.request.dto.response.AccountantDisbursementSummaryResponse;
 import com.mkwang.backend.modules.request.dto.response.AccountantRejectResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApprovalDetailResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApprovalSummaryResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoApproveResponse;
+import com.mkwang.backend.modules.request.dto.response.CfoRejectResponse;
 import com.mkwang.backend.modules.request.dto.response.DisburseResponse;
 import com.mkwang.backend.modules.request.dto.response.RequestDetailResponse;
 import com.mkwang.backend.modules.request.dto.response.ManagerApprovalDetailResponse;
@@ -22,6 +26,8 @@ import com.mkwang.backend.modules.request.dto.response.TlApproveResponse;
 import com.mkwang.backend.modules.request.dto.response.TlRejectResponse;
 import com.mkwang.backend.modules.request.entity.RequestStatus;
 import com.mkwang.backend.modules.request.entity.RequestType;
+
+import java.math.BigDecimal;
 
 public interface RequestService {
 
@@ -55,6 +61,14 @@ public interface RequestService {
 
     ManagerRejectResponse rejectManagerRequest(Long id, Long managerId, RejectRequestRequest req);
 
+    PageResponse<CfoApprovalSummaryResponse> getCfoApprovals(String search, int page, int size);
+
+    CfoApprovalDetailResponse getCfoApprovalDetail(Long id);
+
+    CfoApproveResponse approveCfoRequest(Long id, Long cfoId, ApproveRequestRequest req);
+
+    CfoRejectResponse rejectCfoRequest(Long id, Long cfoId, RejectRequestRequest req);
+
     PageResponse<AccountantDisbursementSummaryResponse> getAccountantDisbursements(
             RequestType type, String search, int page, int size);
 
@@ -63,5 +77,19 @@ public interface RequestService {
     DisburseResponse disburse(Long id, Long accountantId, DisburseRequest req);
 
     AccountantRejectResponse accountantReject(Long id, Long accountantId, RejectRequestRequest req);
+
+    /**
+     * Total outstanding advance debt for a user across all unsettled AdvanceBalance records.
+     * Used by payroll auto-netting to compute per-payslip advance deductions.
+     */
+    BigDecimal getTotalOutstandingDebt(Long userId);
+
+    /**
+     * Apply a payroll advance deduction against a user's unsettled AdvanceBalance records.
+     * Reduces remainingAmount FIFO across advance records until {@code amount} is consumed.
+     * No wallet movement — the salary simply wasn't credited.
+     * Must be called within a transaction (propagates REQUIRED).
+     */
+    void applyPayrollDeduction(Long userId, BigDecimal amount);
 }
 

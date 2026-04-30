@@ -10,5 +10,7 @@ public interface PayslipService {
     PageResponse<PayslipListItemResponse> getMyPayslips(Long userId, Integer year, PayslipStatus status, int page, int limit);
 
     PayslipDetailResponse getMyPayslipById(Long userId, Long payslipId);
+
+    PayslipDetailResponse getPayslipById(Long payslipId);
 }
 

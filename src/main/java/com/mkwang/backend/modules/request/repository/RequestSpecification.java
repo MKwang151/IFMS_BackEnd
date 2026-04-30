@@ -100,4 +100,10 @@ public class RequestSpecification {
                 .and(hasTypeIn(allowedTypes))
                 .and(matchesSearch(search));
     }
+
+    public static Specification<Request> filterForCfoApprovals(String search) {
+        return Specification.where(hasStatus(RequestStatus.PENDING))
+                .and(hasType(RequestType.DEPARTMENT_TOPUP))
+                .and(matchesSearch(search));
+    }
 }
