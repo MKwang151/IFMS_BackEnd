@@ -7,9 +7,12 @@ import com.mkwang.backend.modules.payment.dto.response.PaymentCallbackResult;
 import com.mkwang.backend.modules.payment.dto.response.PaymentCancelResponse;
 import com.mkwang.backend.modules.payment.dto.response.PaymentResponse;
 import com.mkwang.backend.modules.payment.dto.response.PaymentStatusResponse;
+import com.mkwang.backend.modules.payment.dto.response.VnpayIpnResponse;
 import com.mkwang.backend.modules.payment.enums.PaymentGateway;
+import com.mkwang.backend.modules.payment.exception.InvalidPaymentSignatureException;
 import com.mkwang.backend.modules.payment.exception.UnsupportedPaymentGatewayException;
 import com.mkwang.backend.modules.payment.service.PaymentService;
+import com.mkwang.backend.modules.wallet.service.depositing.DepositService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +37,7 @@ import java.util.Map;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final DepositService depositService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<PaymentResponse>> createPayment(@Valid @RequestBody PaymentRequest request) {
@@ -41,39 +45,35 @@ public class PaymentController {
                 .body(ApiResponse.success("Create payment successfully", paymentService.createPayment(request)));
     }
 
+    /**
+     * VNPay IPN — server-to-server callback. Public endpoint (no JWT).
+     * Response MUST be {"RspCode":"00","Message":"Confirm Success"} — VNPay retries until it sees this.
+     */
     @GetMapping("/{gateway}/ipn")
-    public ResponseEntity<ApiResponse<PaymentCallbackResult>> ipnCallback(
+    public ResponseEntity<VnpayIpnResponse> ipnCallback(
             @PathVariable String gateway,
             @RequestParam Map<String, String> params,
             HttpServletRequest request
     ) {
-        PaymentGateway paymentGateway = parseGateway(gateway);
-
         Map<String, String> logParams = new HashMap<>(params);
         logParams.remove("vnp_SecureHash");
+        log.info("IPN received: gateway={} remoteIp={} txRef={} responseCode={} paramsWithoutHash={}",
+                gateway, request.getRemoteAddr(), params.get("vnp_TxnRef"),
+                params.get("vnp_ResponseCode"), logParams);
 
-        log.info(
-                "VNPay IPN received: gateway={}, remoteIp={}, txRef={}, amount={}, responseCode={}, transactionStatus={}, paramsWithoutHash={}",
-                paymentGateway,
-                request.getRemoteAddr(),
-                params.get("vnp_TxnRef"),
-                params.get("vnp_Amount"),
-                params.get("vnp_ResponseCode"),
-                params.get("vnp_TransactionStatus"),
-                logParams
-        );
-
-        PaymentCallbackResult result = paymentService.handleCallback(paymentGateway, params);
-
-        log.info(
-                "VNPay IPN processed: gateway={}, txRef={}, success={}, message={}",
-                paymentGateway,
-                result.getTransactionRef(),
-                result.isSuccess(),
-                result.getMessage()
-        );
-
-        return ResponseEntity.ok(ApiResponse.success("Handle callback successfully", result));
+        try {
+            PaymentGateway paymentGateway = parseGateway(gateway);
+            PaymentCallbackResult result = paymentService.handleCallback(paymentGateway, params);
+            VnpayIpnResponse ipnResponse = depositService.processIpn(result);
+            log.info("IPN processed: txRef={} rspCode={}", params.get("vnp_TxnRef"), ipnResponse.rspCode());
+            return ResponseEntity.ok(ipnResponse);
+        } catch (InvalidPaymentSignatureException e) {
+            log.warn("IPN invalid signature: txRef={}", params.get("vnp_TxnRef"));
+            return ResponseEntity.ok(VnpayIpnResponse.invalidSig());
+        } catch (Exception e) {
+            log.error("IPN processing error: txRef={} error={}", params.get("vnp_TxnRef"), e.getMessage(), e);
+            return ResponseEntity.ok(VnpayIpnResponse.invalidSig());
+        }
     }
 
     @GetMapping("/{gateway}/return")

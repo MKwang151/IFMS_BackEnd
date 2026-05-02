@@ -192,15 +192,18 @@ public class WithdrawServiceImpl implements WithdrawService {
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('TRANSACTION_APPROVE_WITHDRAW')")
-    public Page<WithdrawRequestResponse> getAllRequests(WithdrawStatus status, Pageable pageable) {
-        if (status != null) {
-            return withdrawRequestRepository
-                    .findByStatusOrderByCreatedAtAsc(status, pageable)
-                    .map(withdrawMapper::toDto);
-        }
-        return withdrawRequestRepository
-                .findAllByOrderByCreatedAtDesc(pageable)
-                .map(withdrawMapper::toDto);
+    public PageResponse<WithdrawRequestResponse> getAllRequests(WithdrawStatus status, Pageable pageable) {
+        Page<WithdrawRequestResponse> page = (status != null)
+                ? withdrawRequestRepository.findByStatusOrderByCreatedAtAsc(status, pageable).map(withdrawMapper::toDto)
+                : withdrawRequestRepository.findAllByOrderByCreatedAtDesc(pageable).map(withdrawMapper::toDto);
+
+        return PageResponse.<WithdrawRequestResponse>builder()
+                .items(page.getContent())
+                .total(page.getTotalElements())
+                .page(page.getNumber())
+                .size(page.getSize())
+                .totalPages(page.getTotalPages())
+                .build();
     }
 
     // ══════════════════════════════════════════════════════════════════

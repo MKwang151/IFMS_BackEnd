@@ -71,15 +71,5 @@ public class UserController {
         return sseService.connectToWallet(principal.getUser().getId(), "COMPANY_FUND:1");
     }
 
-    // ── POST /users/onboard ──────────────────────────────────────
 
-    @PostMapping("/onboard")
-    @SecurityRequirement(name = "bearerAuth")
-    @Operation(summary = "Onboard a new employee — creates account, wallet and sends credential email (Admin only)")
-    public ResponseEntity<ApiResponse<OnboardUserResponse>> onboardUser(
-            @Valid @RequestBody OnboardUserRequest request) {
-        OnboardUserResponse response = userService.onboardUser(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("User onboarded successfully", response));
-    }
 }

@@ -4,7 +4,6 @@ import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.modules.wallet.dto.request.CreateWithdrawRequest;
 import com.mkwang.backend.modules.wallet.dto.response.WithdrawRequestResponse;
 import com.mkwang.backend.modules.wallet.entity.WithdrawStatus;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 /**
@@ -57,6 +56,6 @@ public interface WithdrawService {
     /**
      * Accountant views all withdrawal requests, optionally filtered by status.
      */
-    Page<WithdrawRequestResponse> getAllRequests(WithdrawStatus status, Pageable pageable);
+    PageResponse<WithdrawRequestResponse> getAllRequests(WithdrawStatus status, Pageable pageable);
 }
 

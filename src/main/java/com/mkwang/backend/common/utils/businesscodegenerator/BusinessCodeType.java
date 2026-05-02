@@ -127,6 +127,14 @@ public enum BusinessCodeType {
         public String format(long seq, CodeFormatUtils utils, String... params) {
             return "WD-" + LocalDate.now().getYear() + "-" + CodeFormatUtils.padLeft(seq, 6);
         }
+    },
+
+    DEPOSIT("seq_deposit_code") {
+        /** Không cần params — format DEP-{YYYY}-{SEQ:06d} */
+        @Override
+        public String format(long seq, CodeFormatUtils utils, String... params) {
+            return "DEP-" + LocalDate.now().getYear() + "-" + CodeFormatUtils.padLeft(seq, 6);
+        }
     };
 
     // ─────────────────────────────────────────────────────────────────

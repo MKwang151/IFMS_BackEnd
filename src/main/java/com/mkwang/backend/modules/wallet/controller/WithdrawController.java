@@ -12,7 +12,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -101,7 +100,7 @@ public class WithdrawController {
      * Auth: TRANSACTION_APPROVE_WITHDRAW
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<WithdrawRequestResponse>>> getAllRequests(
+    public ResponseEntity<ApiResponse<PageResponse<WithdrawRequestResponse>>> getAllRequests(
             @RequestParam(required = false) WithdrawStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
