@@ -49,4 +49,6 @@ public interface UserService {
     long countUsersByDepartmentId(Long departmentId);
 
     List<User> getUsersByDepartmentIdWithProfile(Long departmentId);
+
+    long countActiveUsers();
 }

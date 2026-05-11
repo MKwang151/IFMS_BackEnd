@@ -15,4 +15,6 @@ public interface DepartmentService {
     DepartmentDetailResponse createDepartment(CreateDepartmentRequest request);
 
     DepartmentDetailResponse updateDepartment(Long id, UpdateDepartmentRequest request);
+
+    long countDepartments();
 }

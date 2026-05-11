@@ -157,6 +157,55 @@ public interface RequestRepository extends JpaRepository<Request, Long>, JpaSpec
             @Param("projectIds") List<Long> projectIds,
             org.springframework.data.domain.Pageable pageable
     );
+
+    @Query("""
+            SELECT COUNT(r) FROM Request r
+            WHERE r.type = 'PROJECT_TOPUP'
+              AND r.status = 'PENDING'
+              AND r.project.department.id = :deptId
+            """)
+    long countPendingProjectTopupByDeptId(@Param("deptId") Long deptId);
+
+    @Query("""
+            SELECT COUNT(r) FROM Request r
+            WHERE r.status = 'APPROVED_BY_TEAM_LEADER'
+              AND r.type IN ('ADVANCE', 'EXPENSE', 'REIMBURSE')
+            """)
+    long countPendingDisbursements();
+
+    @Query("""
+            SELECT COUNT(r) FROM Request r
+            WHERE r.type = 'DEPARTMENT_TOPUP'
+              AND r.status = 'PENDING'
+            """)
+    long countPendingDeptTopup();
+
+    @Query("""
+            SELECT COALESCE(SUM(r.amount), 0) FROM Request r
+            WHERE r.type = 'DEPARTMENT_TOPUP'
+              AND r.status IN ('APPROVED_BY_CFO', 'PAID')
+              AND FUNCTION('YEAR', r.updatedAt) = :year
+              AND FUNCTION('MONTH', r.updatedAt) = :month
+            """)
+    java.math.BigDecimal sumMonthlyApprovedDeptTopup(@Param("year") int year, @Param("month") int month);
+
+    @Query("""
+            SELECT COUNT(r) FROM Request r
+            WHERE r.type = 'DEPARTMENT_TOPUP'
+              AND r.status = 'REJECTED'
+              AND FUNCTION('YEAR', r.updatedAt) = :year
+              AND FUNCTION('MONTH', r.updatedAt) = :month
+            """)
+    long countMonthlyRejectedDeptTopup(@Param("year") int year, @Param("month") int month);
+
+    @Query("""
+            SELECT r FROM Request r
+            LEFT JOIN FETCH r.requester u
+            LEFT JOIN FETCH u.department
+            WHERE r.type = 'DEPARTMENT_TOPUP'
+            ORDER BY r.createdAt DESC
+            """)
+    List<Request> findRecentDeptTopup(org.springframework.data.domain.Pageable pageable);
 }
 
 

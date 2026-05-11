@@ -10,7 +10,9 @@ import com.mkwang.backend.modules.project.dto.response.ProjectDetailResponse;
 import com.mkwang.backend.modules.project.dto.response.ProjectSummaryResponse;
 import com.mkwang.backend.modules.project.entity.ProjectStatus;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 public interface ManagerProjectService {
 
@@ -29,5 +31,16 @@ public interface ManagerProjectService {
     ProjectDetailResponse updateProject(Long managerId, Long projectId, UpdateManagerProjectRequest request);
 
     List<AvailableMemberResponse> getDepartmentTeamLeaders(Long managerId);
+
+    /**
+     * Returns the sum of totalBudget and availableBudget across all projects in the manager's dept.
+     * Result: [totalProjectQuota, totalAvailableBalance]
+     */
+    BigDecimal[] getDeptBudgetSnapshot(Long managerId);
+
+    /**
+     * Returns count of projects per status for the manager's department.
+     */
+    Map<ProjectStatus, Long> getDeptProjectStatusCounts(Long managerId);
 }
 

@@ -164,4 +164,16 @@ public interface WalletService {
      * Should equal FLOAT_MAIN.balance — any difference is a discrepancy.
      */
     BigDecimal sumAllBalancesExceptFloatMain();
+
+    /**
+     * Total CREDIT (inflow) into the COMPANY_FUND wallet for the given year/month.
+     * Used by Accountant dashboard.
+     */
+    BigDecimal getCompanyFundMonthlyInflow(int year, int month);
+
+    /**
+     * Total DEBIT (outflow) from the COMPANY_FUND wallet for the given year/month.
+     * Used by Accountant dashboard.
+     */
+    BigDecimal getCompanyFundMonthlyOutflow(int year, int month);
 }

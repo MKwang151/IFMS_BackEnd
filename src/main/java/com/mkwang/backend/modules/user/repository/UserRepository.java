@@ -51,6 +51,9 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     @Query("SELECT COUNT(u) FROM User u WHERE u.department.id = :departmentId")
     long countByDepartmentId(@Param("departmentId") Long departmentId);
 
+    @Query("SELECT COUNT(u) FROM User u WHERE u.status = 'ACTIVE'")
+    long countActiveUsers();
+
     @Query("""
             SELECT u FROM User u
             LEFT JOIN FETCH u.profile up

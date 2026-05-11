@@ -74,5 +74,11 @@ public interface PayrollManagementService {
      * @throws com.mkwang.backend.common.exception.BadRequestException       if period is not DRAFT
      */
     AutoNettingResponse autoNetting(Long periodId);
+
+    /**
+     * Return the latest payroll period, or empty if none exists.
+     * Used by Accountant dashboard.
+     */
+    java.util.Optional<com.mkwang.backend.modules.accounting.entity.PayrollPeriod> getLatestPayrollPeriod();
 }
 

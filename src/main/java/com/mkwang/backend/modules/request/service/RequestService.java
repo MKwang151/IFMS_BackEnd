@@ -27,7 +27,10 @@ import com.mkwang.backend.modules.request.dto.response.TlRejectResponse;
 import com.mkwang.backend.modules.request.entity.RequestStatus;
 import com.mkwang.backend.modules.request.entity.RequestType;
 
+import com.mkwang.backend.modules.request.dto.response.CfoDeptTopupItemResponse;
+
 import java.math.BigDecimal;
+import java.util.List;
 
 public interface RequestService {
 
@@ -77,6 +80,24 @@ public interface RequestService {
     DisburseResponse disburse(Long id, Long accountantId, DisburseRequest req);
 
     AccountantRejectResponse accountantReject(Long id, Long accountantId, RejectRequestRequest req);
+
+    // ── Dashboard aggregates ──────────────────────────────────────────
+
+    long countPendingDisbursements();
+
+    long countDeptPendingProjectTopup(Long deptId);
+
+    BigDecimal sumDeptOutstandingAdvanceDebt(Long deptId);
+
+    long countDeptEmployeesWithDebt(Long deptId);
+
+    long countPendingDeptTopup();
+
+    BigDecimal sumMonthlyApprovedDeptTopup(int year, int month);
+
+    long countMonthlyRejectedDeptTopup(int year, int month);
+
+    List<CfoDeptTopupItemResponse> getRecentDeptTopups(int limit);
 
     /**
      * Total outstanding advance debt for a user across all unsettled AdvanceBalance records.

@@ -154,6 +154,12 @@ public class DepartmentServiceImpl implements DepartmentService {
         return departmentMapper.toDetail(dept, members);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countDepartments() {
+        return departmentRepository.count();
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
     private String resolveCode(String requestedCode, String name) {

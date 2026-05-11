@@ -563,6 +563,12 @@ public class PayrollManagementServiceImpl implements PayrollManagementService {
         return payrollManagementMapper.toEntryResponse(payslip);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<com.mkwang.backend.modules.accounting.entity.PayrollPeriod> getLatestPayrollPeriod() {
+        return payrollPeriodRepository.findLatestPeriod();
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Private helpers
     // ─────────────────────────────────────────────────────────────────

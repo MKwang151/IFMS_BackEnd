@@ -360,6 +360,12 @@ public class UserServiceImpl implements UserService {
         return userRepository.findByDepartmentIdWithProfile(departmentId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countActiveUsers() {
+        return userRepository.countActiveUsers();
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
     private void sendOnboardEmail(String email, String fullName, String employeeCode,

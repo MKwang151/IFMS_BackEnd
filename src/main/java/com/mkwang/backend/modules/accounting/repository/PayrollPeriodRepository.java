@@ -24,5 +24,8 @@ public interface PayrollPeriodRepository extends JpaRepository<PayrollPeriod, Lo
             where period.id = :periodId
             """)
     Optional<PayrollPeriod> findDetailById(@Param("periodId") Long periodId);
+
+    @Query("SELECT p FROM PayrollPeriod p ORDER BY p.createdAt DESC LIMIT 1")
+    Optional<PayrollPeriod> findLatestPeriod();
 }
 

@@ -930,6 +930,67 @@ public class RequestServiceImpl implements RequestService {
         }
     }
 
+    // ── Dashboard aggregates ──────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countPendingDisbursements() {
+        return requestRepository.countPendingDisbursements();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countDeptPendingProjectTopup(Long deptId) {
+        return requestRepository.countPendingProjectTopupByDeptId(deptId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal sumDeptOutstandingAdvanceDebt(Long deptId) {
+        return advanceBalanceRepository.sumOutstandingByDeptId(deptId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countDeptEmployeesWithDebt(Long deptId) {
+        return advanceBalanceRepository.countEmployeesWithDebtByDeptId(deptId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countPendingDeptTopup() {
+        return requestRepository.countPendingDeptTopup();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.math.BigDecimal sumMonthlyApprovedDeptTopup(int year, int month) {
+        return requestRepository.sumMonthlyApprovedDeptTopup(year, month);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countMonthlyRejectedDeptTopup(int year, int month) {
+        return requestRepository.countMonthlyRejectedDeptTopup(year, month);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.mkwang.backend.modules.request.dto.response.CfoDeptTopupItemResponse> getRecentDeptTopups(int limit) {
+        Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return requestRepository.findRecentDeptTopup(pageable).stream()
+                .map(r -> new com.mkwang.backend.modules.request.dto.response.CfoDeptTopupItemResponse(
+                        r.getId(),
+                        r.getRequestCode(),
+                        r.getRequester() != null && r.getRequester().getDepartment() != null
+                                ? r.getRequester().getDepartment().getName() : null,
+                        r.getAmount(),
+                        r.getStatus(),
+                        r.getCreatedAt()
+                ))
+                .toList();
+    }
+
     @Override
     public java.math.BigDecimal getTotalOutstandingDebt(Long userId) {
         return advanceBalanceRepository.sumRemainingByUserId(userId);

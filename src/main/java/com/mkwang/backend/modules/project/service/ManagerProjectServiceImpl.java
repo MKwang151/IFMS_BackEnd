@@ -243,6 +243,33 @@ public class ManagerProjectServiceImpl implements ManagerProjectService {
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_VIEW_DEPT')")
+    public BigDecimal[] getDeptBudgetSnapshot(Long managerId) {
+        User manager = getManagerOrThrow(managerId);
+        Long deptId = manager.getDepartment().getId();
+        BigDecimal totalQuota = projectRepository.sumTotalBudgetByDeptId(deptId);
+        BigDecimal totalAvailable = projectRepository.sumAvailableBudgetByDeptId(deptId);
+        return new BigDecimal[]{totalQuota, totalAvailable};
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_VIEW_DEPT')")
+    public Map<com.mkwang.backend.modules.project.entity.ProjectStatus, Long> getDeptProjectStatusCounts(Long managerId) {
+        User manager = getManagerOrThrow(managerId);
+        Long deptId = manager.getDepartment().getId();
+        Map<com.mkwang.backend.modules.project.entity.ProjectStatus, Long> counts = new HashMap<>();
+        for (Object[] row : projectRepository.countByStatusForDept(deptId)) {
+            com.mkwang.backend.modules.project.entity.ProjectStatus status =
+                    (com.mkwang.backend.modules.project.entity.ProjectStatus) row[0];
+            Long count = ((Number) row[1]).longValue();
+            counts.put(status, count);
+        }
+        return counts;
+    }
+
     private ProjectDetailResponse buildProjectDetail(Project project) {
         List<PhaseDetailResponse> phases = projectPhaseRepository.findByProject_IdOrderByCreatedAtAsc(project.getId())
                 .stream()

@@ -498,6 +498,26 @@ public class WalletServiceImpl implements WalletService {
         return walletRepository.sumAllBalancesExcept(WalletOwnerType.FLOAT_MAIN);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getCompanyFundMonthlyInflow(int year, int month) {
+        Wallet wallet = walletRepository.findByOwnerTypeAndOwnerId(WalletOwnerType.COMPANY_FUND, 1L)
+                .orElseThrow(() -> new com.mkwang.backend.common.exception.InternalSystemException("COMPANY_FUND wallet not found"));
+        java.time.LocalDateTime from = java.time.LocalDate.of(year, month, 1).atStartOfDay();
+        java.time.LocalDateTime to = from.plusMonths(1).minusNanos(1);
+        return ledgerEntryRepository.sumCreditByWalletAndRange(wallet.getId(), from, to);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal getCompanyFundMonthlyOutflow(int year, int month) {
+        Wallet wallet = walletRepository.findByOwnerTypeAndOwnerId(WalletOwnerType.COMPANY_FUND, 1L)
+                .orElseThrow(() -> new com.mkwang.backend.common.exception.InternalSystemException("COMPANY_FUND wallet not found"));
+        java.time.LocalDateTime from = java.time.LocalDate.of(year, month, 1).atStartOfDay();
+        java.time.LocalDateTime to = from.plusMonths(1).minusNanos(1);
+        return ledgerEntryRepository.sumDebitByWalletAndRange(wallet.getId(), from, to);
+    }
+
     // ══════════════════════════════════════════════════════════════════
     //  SSE PUSH (private — best-effort)
     //  USER wallets  → sendToUser (general /stream emitter)

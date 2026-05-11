@@ -46,4 +46,19 @@ public interface AdvanceBalanceRepository extends JpaRepository<AdvanceBalance, 
   Optional<AdvanceBalance> findByIdForUpdate(@Param("id") Long id);
 
   Optional<AdvanceBalance> findByAdvanceRequestId(Long requestId);
+
+  @Query("""
+      SELECT COALESCE(SUM(ab.remainingAmount), 0) FROM AdvanceBalance ab
+      WHERE ab.status <> 'SETTLED'
+        AND ab.user.department.id = :deptId
+      """)
+  java.math.BigDecimal sumOutstandingByDeptId(@Param("deptId") Long deptId);
+
+  @Query("""
+      SELECT COUNT(DISTINCT ab.user.id) FROM AdvanceBalance ab
+      WHERE ab.status <> 'SETTLED'
+        AND ab.remainingAmount > 0
+        AND ab.user.department.id = :deptId
+      """)
+  long countEmployeesWithDebtByDeptId(@Param("deptId") Long deptId);
 }

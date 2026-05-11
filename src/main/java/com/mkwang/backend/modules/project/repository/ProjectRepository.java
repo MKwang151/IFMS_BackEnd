@@ -60,4 +60,13 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
             where pm.project.id = :projectId
             """)
     int countMembersByProjectId(@Param("projectId") Long projectId);
+
+    @Query("SELECT COALESCE(SUM(p.totalBudget), 0) FROM Project p WHERE p.department.id = :deptId")
+    java.math.BigDecimal sumTotalBudgetByDeptId(@Param("deptId") Long deptId);
+
+    @Query("SELECT COALESCE(SUM(p.availableBudget), 0) FROM Project p WHERE p.department.id = :deptId")
+    java.math.BigDecimal sumAvailableBudgetByDeptId(@Param("deptId") Long deptId);
+
+    @Query("SELECT p.status, COUNT(p) FROM Project p WHERE p.department.id = :deptId GROUP BY p.status")
+    java.util.List<Object[]> countByStatusForDept(@Param("deptId") Long deptId);
 }
