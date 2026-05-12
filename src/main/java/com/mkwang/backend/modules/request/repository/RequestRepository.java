@@ -184,8 +184,8 @@ public interface RequestRepository extends JpaRepository<Request, Long>, JpaSpec
             SELECT COALESCE(SUM(r.amount), 0) FROM Request r
             WHERE r.type = 'DEPARTMENT_TOPUP'
               AND r.status IN ('APPROVED_BY_CFO', 'PAID')
-              AND FUNCTION('YEAR', r.updatedAt) = :year
-              AND FUNCTION('MONTH', r.updatedAt) = :month
+              AND YEAR(r.updatedAt) = :year
+              AND MONTH(r.updatedAt) = :month
             """)
     java.math.BigDecimal sumMonthlyApprovedDeptTopup(@Param("year") int year, @Param("month") int month);
 
@@ -193,8 +193,8 @@ public interface RequestRepository extends JpaRepository<Request, Long>, JpaSpec
             SELECT COUNT(r) FROM Request r
             WHERE r.type = 'DEPARTMENT_TOPUP'
               AND r.status = 'REJECTED'
-              AND FUNCTION('YEAR', r.updatedAt) = :year
-              AND FUNCTION('MONTH', r.updatedAt) = :month
+              AND YEAR(r.updatedAt) = :year
+              AND MONTH(r.updatedAt) = :month
             """)
     long countMonthlyRejectedDeptTopup(@Param("year") int year, @Param("month") int month);
 

@@ -366,6 +366,12 @@ public class UserServiceImpl implements UserService {
         return userRepository.countActiveUsers();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> getActiveUsersByRoleName(String roleName) {
+        return userRepository.findActiveUsersByRoleName(roleName);
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
     private void sendOnboardEmail(String email, String fullName, String employeeCode,

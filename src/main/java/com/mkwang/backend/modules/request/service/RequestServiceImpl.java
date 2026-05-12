@@ -9,9 +9,14 @@ import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
 import com.mkwang.backend.modules.file.dto.request.FileStorageRequest;
 import com.mkwang.backend.modules.file.entity.FileStorage;
 import com.mkwang.backend.modules.file.service.FileStorageService;
+import com.mkwang.backend.modules.notification.publisher.NotificationEvent;
+import com.mkwang.backend.modules.notification.publisher.NotificationPublisher;
 import com.mkwang.backend.modules.project.entity.ExpenseCategory;
 import com.mkwang.backend.modules.project.entity.Project;
+import com.mkwang.backend.modules.project.entity.ProjectMember;
 import com.mkwang.backend.modules.project.entity.ProjectPhase;
+import com.mkwang.backend.modules.project.entity.ProjectRole;
+import com.mkwang.backend.modules.project.repository.ProjectMemberRepository;
 import com.mkwang.backend.modules.project.service.CategoryBudgetService;
 import com.mkwang.backend.modules.project.service.ProjectQueryService;
 import com.mkwang.backend.modules.request.dto.request.AttachmentRequest;
@@ -73,6 +78,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -90,10 +96,12 @@ public class RequestServiceImpl implements RequestService {
     private final UserService userService;
     private final ProfileService profileService;
     private final ProjectQueryService projectQueryService;
+    private final ProjectMemberRepository projectMemberRepository;
     private final CategoryBudgetService categoryBudgetService;
     private final BusinessCodeGenerator codeGenerator;
     private final RequestMapper requestMapper;
     private final WalletService walletService;
+    private final NotificationPublisher notificationPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -216,6 +224,18 @@ public class RequestServiceImpl implements RequestService {
 
         savedFiles.forEach(request::addAttachment);
         Request saved = requestRepository.save(request);
+
+        if (FLOW1_TYPES.contains(req.getType()) && project != null) {
+            List<User> leaders = projectMemberRepository
+                    .findByProject_IdAndProjectRole(project.getId(), ProjectRole.LEADER)
+                    .stream().map(ProjectMember::getUser).toList();
+            notifyAll(leaders, "REQUEST_SUBMITTED",
+                    "Yêu cầu mới cần duyệt",
+                    requester.getFullName() + " đã gửi yêu cầu " + req.getType()
+                            + " - " + saved.getRequestCode(),
+                    saved.getId());
+        }
+
         return requestMapper.toDetailResponse(saved, List.of());
     }
 
@@ -372,6 +392,13 @@ public class RequestServiceImpl implements RequestService {
             walletService.lockFunds(WalletOwnerType.PROJECT, request.getProject().getId(), effectiveAmount);
         }
 
+        List<User> accountants = userService.getActiveUsersByRoleName("ACCOUNTANT");
+        notifyAll(accountants, "REQUEST_APPROVED_BY_TL",
+                "Yêu cầu chờ giải ngân",
+                request.getRequestCode() + " đã được Team Leader duyệt. "
+                        + "Cần giải ngân " + formatAmount(effectiveAmount) + " VND.",
+                request.getId());
+
         return requestMapper.toTlApproveResponse(request, req.getComment());
     }
 
@@ -407,6 +434,13 @@ public class RequestServiceImpl implements RequestService {
                 .build());
 
         requestRepository.save(request);
+
+        notify(request.getRequester(), "REQUEST_REJECTED",
+                "Yêu cầu bị từ chối",
+                "Yêu cầu " + request.getRequestCode() + " đã bị Team Leader từ chối. "
+                        + "Lý do: " + req.getReason(),
+                request.getId());
+
         return requestMapper.toTlRejectResponse(request);
     }
 
@@ -506,6 +540,13 @@ public class RequestServiceImpl implements RequestService {
                 .build());
 
         requestRepository.save(request);
+
+        notify(request.getRequester(), "PROJECT_TOPUP_APPROVED",
+                "Yêu cầu nạp quỹ dự án được duyệt",
+                "Yêu cầu " + request.getRequestCode() + " đã được Manager duyệt. "
+                        + formatAmount(effectiveAmount) + " VND đã được chuyển vào quỹ dự án.",
+                request.getId());
+
         return requestMapper.toManagerApproveResponse(request, req.getComment());
     }
 
@@ -538,6 +579,13 @@ public class RequestServiceImpl implements RequestService {
                 .build());
 
         requestRepository.save(request);
+
+        notify(request.getRequester(), "PROJECT_TOPUP_REJECTED",
+                "Yêu cầu nạp quỹ dự án bị từ chối",
+                "Yêu cầu " + request.getRequestCode() + " đã bị Manager từ chối. "
+                        + "Lý do: " + req.getReason(),
+                request.getId());
+
         return requestMapper.toManagerRejectResponse(request);
     }
 
@@ -632,6 +680,13 @@ public class RequestServiceImpl implements RequestService {
                 .build());
 
         requestRepository.save(request);
+
+        notify(request.getRequester(), "DEPT_TOPUP_APPROVED",
+                "Yêu cầu nạp ngân sách phòng ban được duyệt",
+                "Yêu cầu " + request.getRequestCode() + " đã được CFO duyệt. "
+                        + formatAmount(effectiveAmount) + " VND đã được chuyển vào quỹ phòng ban.",
+                request.getId());
+
         return response;
     }
 
@@ -659,6 +714,13 @@ public class RequestServiceImpl implements RequestService {
                 .build());
 
         requestRepository.save(request);
+
+        notify(request.getRequester(), "DEPT_TOPUP_REJECTED",
+                "Yêu cầu nạp ngân sách phòng ban bị từ chối",
+                "Yêu cầu " + request.getRequestCode() + " đã bị CFO từ chối. "
+                        + "Lý do: " + req.getReason(),
+                request.getId());
+
         return requestMapper.toCfoRejectResponse(request);
     }
 
@@ -781,6 +843,13 @@ public class RequestServiceImpl implements RequestService {
                 .build());
 
         requestRepository.save(request);
+
+        notify(request.getRequester(), "REQUEST_PAID",
+                "Yêu cầu đã được giải ngân",
+                formatAmount(amount) + " VND đã được giải ngân vào ví của bạn cho yêu cầu "
+                        + request.getRequestCode() + ".",
+                request.getId());
+
         return requestMapper.toDisburseResponse(request, transactionCode);
     }
 
@@ -815,6 +884,13 @@ public class RequestServiceImpl implements RequestService {
                 .build());
 
         requestRepository.save(request);
+
+        notify(request.getRequester(), "REQUEST_REJECTED",
+                "Yêu cầu bị từ chối",
+                "Yêu cầu " + request.getRequestCode() + " đã bị kế toán từ chối. "
+                        + "Lý do: " + req.getReason(),
+                request.getId());
+
         return requestMapper.toAccountantRejectResponse(request);
     }
 
@@ -928,6 +1004,25 @@ public class RequestServiceImpl implements RequestService {
         if (value != null) {
             throw new BadRequestException(message);
         }
+    }
+
+    private void notify(User recipient, String type, String title, String message, Long refId) {
+        try {
+            notificationPublisher.publish(new NotificationEvent(
+                    recipient.getId(), recipient.getEmail(), type, title, message, refId, "REQUEST"));
+        } catch (Exception e) {
+            // Notification failure must never break the business transaction
+        }
+    }
+
+    private void notifyAll(List<User> recipients, String type, String title, String message, Long refId) {
+        for (User r : recipients) {
+            notify(r, type, title, message, refId);
+        }
+    }
+
+    private static String formatAmount(BigDecimal amount) {
+        return String.format(Locale.US, "%,.0f", amount);
     }
 
     // ── Dashboard aggregates ──────────────────────────────────────────

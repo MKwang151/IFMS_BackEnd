@@ -69,14 +69,13 @@ public interface ProjectMemberRepository
               AND u.id NOT IN (
                   SELECT pm.user.id FROM ProjectMember pm WHERE pm.project.id = :projectId
               )
-              AND (:search IS NULL OR lower(u.fullName) like lower(concat('%', :search, '%'))
-                   OR lower(up.employeeCode) like lower(concat('%', :search, '%')))
+              AND (lower(u.fullName) like :searchLike OR lower(up.employeeCode) like :searchLike)
             ORDER BY u.fullName ASC
             """)
     List<User> findAvailableUsersForProject(
             @Param("departmentId") Long departmentId,
             @Param("projectId") Long projectId,
-            @Param("search") String search
+            @Param("searchLike") String searchLike
     );
 
     @Query("""

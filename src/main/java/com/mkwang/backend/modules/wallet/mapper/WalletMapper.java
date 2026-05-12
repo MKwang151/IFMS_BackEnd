@@ -41,6 +41,7 @@ public class WalletMapper {
     public LedgerEntryResponse toLedgerEntryResponse(LedgerEntry entry) {
         return LedgerEntryResponse.builder()
                 .id(entry.getId())
+                .transactionId(entry.getTransaction().getId())
                 .transactionCode(entry.getTransaction().getTransactionCode())
                 .direction(entry.getDirection())
                 .amount(entry.getAmount())

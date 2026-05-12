@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/company-fund")
+@RequestMapping("/company-fund")
 @RequiredArgsConstructor
 public class CompanyFundController {
 

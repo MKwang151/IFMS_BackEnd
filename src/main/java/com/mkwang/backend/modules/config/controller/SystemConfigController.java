@@ -27,7 +27,7 @@ import java.util.List;
  *   DELETE /system-configs/cache              → evict toàn bộ cache
  */
 @RestController
-@RequestMapping("/api/v1/system-configs")
+@RequestMapping("/system-configs")
 @RequiredArgsConstructor
 @PreAuthorize("hasAuthority('SYSTEM_CONFIG_MANAGE')")
 public class SystemConfigController {

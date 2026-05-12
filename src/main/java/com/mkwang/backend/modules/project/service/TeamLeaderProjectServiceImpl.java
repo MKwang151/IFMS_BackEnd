@@ -73,8 +73,9 @@ public class TeamLeaderProjectServiceImpl implements TeamLeaderProjectService {
     public PageResponse<ProjectSummaryResponse> getLeaderProjects(
             User currentUser, ProjectStatus status, String search, int page, int limit) {
 
+        String searchLike = (search == null || search.isBlank()) ? "%" : "%" + search.toLowerCase() + "%";
         List<Project> allProjects = projectRepository.findLeaderProjects(
-                currentUser.getId(), status, search == null || search.isBlank() ? null : search);
+                currentUser.getId(), status, searchLike);
 
         int total = allProjects.size();
         int fromIndex = Math.max(0, (page - 1) * limit);
@@ -268,9 +269,9 @@ public class TeamLeaderProjectServiceImpl implements TeamLeaderProjectService {
             throw new BadRequestException("Project has no department assigned");
         }
 
-        String searchParam = (search == null || search.isBlank()) ? null : search;
+        String searchLike = (search == null || search.isBlank()) ? "%" : "%" + search.toLowerCase() + "%";
 
-        return projectMemberRepository.findAvailableUsersForProject(departmentId, projectId, searchParam)
+        return projectMemberRepository.findAvailableUsersForProject(departmentId, projectId, searchLike)
                 .stream()
                 .map(user -> {
                     UserProfile profile = user.getProfile();

@@ -44,14 +44,13 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
             where pm.user.id = :leaderId
               and pm.projectRole = 'LEADER'
               and (:status is null or p.status = :status)
-              and (:search is null or lower(p.name) like lower(concat('%', :search, '%'))
-                    or lower(p.projectCode) like lower(concat('%', :search, '%')))
+              and (lower(p.name) like :searchLike or lower(p.projectCode) like :searchLike)
             order by p.createdAt desc
             """)
     List<Project> findLeaderProjects(
             @Param("leaderId") Long leaderId,
             @Param("status") ProjectStatus status,
-            @Param("search") String search
+            @Param("searchLike") String searchLike
     );
 
     @Query("""

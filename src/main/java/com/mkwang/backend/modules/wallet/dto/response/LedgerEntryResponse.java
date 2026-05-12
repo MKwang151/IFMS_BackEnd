@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 public class LedgerEntryResponse {
 
     private Long id;
+    private Long transactionId;
     private String transactionCode;
     private TransactionDirection direction;
     private BigDecimal amount;

@@ -51,4 +51,6 @@ public interface UserService {
     List<User> getUsersByDepartmentIdWithProfile(Long departmentId);
 
     long countActiveUsers();
+
+    List<User> getActiveUsersByRoleName(String roleName);
 }
