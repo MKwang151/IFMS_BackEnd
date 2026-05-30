@@ -135,7 +135,15 @@ public class ProfileServiceImpl implements ProfileService {
         userProfileRepository.save(profile);
 
         if (previousAvatar != null && !previousAvatar.getId().equals(savedFile.getId())) {
-            fileStorageService.deleteFile(previousAvatar.getId());
+            boolean oldAvatarDeleted = fileStorageService.deleteFileBestEffort(previousAvatar.getId());
+            if (!oldAvatarDeleted) {
+                log.warn(
+                        "Avatar updated for userId={}, but old avatar cleanup was deferred. oldFileId={}, newFileId={}",
+                        userId,
+                        previousAvatar.getId(),
+                        savedFile.getId()
+                );
+            }
         }
 
         return profileMapper.toMyAvatarResponse(savedFile.getUrl());
