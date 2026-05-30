@@ -6,14 +6,15 @@ import com.mkwang.backend.modules.file.entity.FileStorage;
 import com.mkwang.backend.modules.file.mapper.FileStorageMapper;
 import com.mkwang.backend.modules.file.repository.FileStorageRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class FileStorageService {
 
@@ -55,5 +56,27 @@ public class FileStorageService {
 
         cloudinaryService.deleteFile(file.getCloudinaryPublicId());
         fileStorageRepository.delete(file);
+    }
+
+    @Transactional
+    public boolean deleteFileBestEffort(Long id) {
+        FileStorage file = fileStorageRepository.findById(id).orElse(null);
+        if (file == null) {
+            return false;
+        }
+
+        try {
+            cloudinaryService.deleteFile(file.getCloudinaryPublicId());
+            fileStorageRepository.delete(file);
+            return true;
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "Could not delete old file from Cloudinary. Keeping metadata for later cleanup. fileId={}, publicId={}",
+                    file.getId(),
+                    file.getCloudinaryPublicId(),
+                    ex
+            );
+            return false;
+        }
     }
 }
