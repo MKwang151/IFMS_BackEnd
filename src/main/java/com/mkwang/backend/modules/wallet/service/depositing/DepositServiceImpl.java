@@ -116,8 +116,18 @@ public class DepositServiceImpl implements DepositService {
         java.time.LocalDateTime fromDt = from != null ? from.atStartOfDay() : null;
         java.time.LocalDateTime toDt   = to   != null ? to.atTime(LocalTime.MAX) : null;
 
-        Page<DepositLogResponse> page = depositLogRepository
-                .findByUserIdWithFilters(userId, status, fromDt, toDt, pageable)
+        org.springframework.data.jpa.domain.Specification<DepositLog> spec =
+            (root, query, cb) -> {
+                java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+                predicates.add(cb.equal(root.get("userId"), userId));
+                if (status != null) predicates.add(cb.equal(root.get("status"), status));
+                if (fromDt != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), fromDt));
+                if (toDt   != null) predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), toDt));
+                if (query != null) query.orderBy(cb.desc(root.get("createdAt")));
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            };
+
+        Page<DepositLogResponse> page = depositLogRepository.findAll(spec, pageable)
                 .map(d -> toResponse(d, null));
 
         return PageResponse.<DepositLogResponse>builder()
