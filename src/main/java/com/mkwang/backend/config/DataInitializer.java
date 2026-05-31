@@ -18,6 +18,7 @@ import com.mkwang.backend.modules.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,7 @@ import java.util.Set;
  */
 @Slf4j
 @Component
+@Order(1)
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
@@ -275,13 +277,6 @@ public class DataInitializer implements CommandLineRunner {
                 "VCB", "0011004000001", "PHAM THI THANH HA"
         );
 
-        User supportAdmin = createUserIfNotExists(
-                "ifms.support.noreply@gmail.com", "MK999", "System Support",
-                adminRole, null,
-                "System Admin", "0999999999", "Hà Nội",
-                "VCB", "0999999999999", "SYSTEM SUPPORT"
-        );
-
         // ---- CFO (financial governance — belongs to Finance dept) ----
         User cfo = createUserIfNotExists(
                 "cfo@ifms.vn", "MK010", "Nguyễn Văn Minh",
@@ -298,7 +293,7 @@ public class DataInitializer implements CommandLineRunner {
                 "MBBank", "0011004000002", "LE VAN CUONG"
         );
 
-        // ---- MANAGERS ----
+        // ---- MANAGER ----
         User managerIT = createUserIfNotExists(
                 "manager.it@ifms.vn", "MK002", "Trần Thị Bích",
                 managerRole, it,
@@ -306,14 +301,7 @@ public class DataInitializer implements CommandLineRunner {
                 "Techcombank", "0011004000003", "TRAN THI BICH"
         );
 
-        User managerSales = createUserIfNotExists(
-                "manager.sales@ifms.vn", "MK003", "Nguyễn Hồng Sơn",
-                managerRole, sales,
-                "Sales Manager", "0901000004", "TP.HCM",
-                "ACB", "0011004000004", "NGUYEN HONG SON"
-        );
-
-        // ---- TEAM LEADERS ----
+        // ---- TEAM LEADER ----
         User teamLeadIT = createUserIfNotExists(
                 "tl.it@ifms.vn", "MK008", "Hoàng Minh Tuấn",
                 teamLeaderRole, it,
@@ -350,11 +338,9 @@ public class DataInitializer implements CommandLineRunner {
                 "VCB", "0011004000008", "NGUYEN THI MINH"
         );
 
-        // Gán manager cho từng phòng ban (sau khi user đã được persist)
-        // BGD không có manager — admin không thuộc phòng ban nào
-        assignManagerToDept(fin,   accountant);
-        assignManagerToDept(it,    managerIT);
-        assignManagerToDept(sales, managerSales);
+        // Gán manager cho phòng ban (sau khi user đã được persist)
+        assignManagerToDept(fin, accountant);
+        assignManagerToDept(it,  managerIT);
     }
 
     // =========================================================
