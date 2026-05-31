@@ -65,9 +65,9 @@ Mọi endpoint chuẩn đều trả `ResponseEntity<ApiResponse<T>>`. Cấu trú
 > Các trường `*Code` (VD: `transactionCode`, `payslipCode`) là mã nghiệp vụ auto-generated ở Backend — không phải Primary Key.  
 > Avatar URL là Signed URL từ Cloudinary (Private mode, hết hạn 15 phút), được Backend sinh khi trả response.  
 > Mã PIN giao dịch: **5 chữ số** (hash BCrypt lưu trong `user_security_settings.transaction_pin`).  
-> **Request Status Enum (6 giá trị):** `PENDING_APPROVAL`, `PENDING_ACCOUNTANT`, `APPROVED`, `PAID`, `REJECTED`, `CANCELLED`.  
-> **Request Type Enum (5 giá trị):** `ADVANCE`, `EXPENSE`, `REIMBURSE`, `PROJECT_TOPUP`, `QUOTA_TOPUP`.  
-> **Request Action Enum (4 giá trị):** `APPROVE`, `REJECT`, `PAYOUT`, `CANCEL`.
+> **Request Status Enum (7 giá trị):** `PENDING` · `APPROVED_BY_TEAM_LEADER` · `APPROVED_BY_MANAGER` · `APPROVED_BY_CFO` · `PAID` · `REJECTED` · `CANCELLED`.  
+> **Request Type Enum (5 giá trị):** `ADVANCE` · `EXPENSE` · `REIMBURSE` · `PROJECT_TOPUP` · `DEPARTMENT_TOPUP`.  
+> **Request Action Enum (4 giá trị):** `APPROVE` · `REJECT` · `PAYOUT` · `CANCEL`.
 
 ---
 
@@ -1686,7 +1686,7 @@ Cập nhật `position` của member trong project.
 ### DELETE `/team-leader/projects/:id/members/:userId`
 Xóa member khỏi project.
 
-> **Validation:** KHÔNG cho phép xóa chính mình (LEADER). KHÔNG cho phép xóa member đang có request `PENDING_APPROVAL` hoặc `PENDING_ACCOUNTANT` trong project này.
+> **Validation:** KHÔNG cho phép xóa chính mình (LEADER). KHÔNG cho phép xóa member đang có request `PENDING` hoặc `APPROVED_BY_TEAM_LEADER` trong project này.
 
 **Response:** `{ "message": "Member removed from project successfully" }`
 
@@ -1850,7 +1850,7 @@ Danh sách tất cả members thuộc các projects mà user là LEADER (gộp t
 }
 ```
 > `debtBalance`: `wallets.debt_balance`.  
-> `pendingRequestsCount`: COUNT `requests` WHERE `requester_id = user.id` AND `project_id IN (LEADER projects)` AND `status IN (PENDING_APPROVAL, PENDING_ACCOUNTANT)`.  
+> `pendingRequestsCount`: COUNT `requests` WHERE `requester_id = user.id` AND `project_id IN (LEADER projects)` AND `status IN (PENDING, APPROVED_BY_TEAM_LEADER)`.  
 > `projects[]`: danh sách projects mà member tham gia (chỉ lọc projects do TL này quản lý).  
 > Nếu filter `projectId` → chỉ hiển thị members của project đó.
 
@@ -1887,7 +1887,7 @@ Chi tiết một team member — bao gồm danh sách projects, recent requests 
       "requestCode": "REQ-IT-2602-001",
       "type": "ADVANCE",
       "amount": 5000000,
-      "status": "PENDING_APPROVAL",
+      "status": "PENDING",
       "projectCode": "PRJ-ERP-2026",
       "categoryName": "Equipment & Software",
       "createdAt": "2026-02-18T09:15:00"
@@ -2371,7 +2371,7 @@ Danh sách nhân viên trong department của manager.
 ```
 > `id`: `users.id` (Long).  
 > `debtBalance`: `wallets.debt_balance` (join qua `user_id`).  
-> `pendingRequestsCount`: COUNT `requests` WHERE `requester_id = user.id` AND `status IN (PENDING_APPROVAL, PENDING_ACCOUNTANT)`.
+> `pendingRequestsCount`: COUNT `requests` WHERE `requester_id = user.id` AND `status IN (PENDING, APPROVED_BY_TEAM_LEADER)`.
 
 ---
 
@@ -3785,7 +3785,7 @@ Cập nhật department.
 ### GET `/admin/audit`
 Lịch sử audit log toàn hệ thống.
 
-**Params:** `?actorId=1&action=USER_CREATED|USER_LOCKED|USER_UNLOCKED|DEPARTMENT_CREATED|QUOTA_TOPUP|CONFIG_UPDATED|ROLE_ASSIGNED&entityName=users|departments|system_configs&from=2026-01-01&to=2026-02-28&page=1&limit=50`
+**Params:** `?actorId=1&action=INSERT|UPDATE|DELETE&entityName=User|Department|SystemConfig&from=2026-01-01&to=2026-02-28&page=1&limit=50`
 
 **DB mapping:** `audit_logs` JOIN `users` (actor).
 
@@ -3797,26 +3797,28 @@ Lịch sử audit log toàn hệ thống.
       "id": 1,
       "actorId": 10,
       "actorName": "Le Van Duc",
-      "action": "USER_LOCKED",
-      "entityName": "users",
+      "action": "UPDATE",
+      "entityName": "User",
       "entityId": "8",
-      "oldValues": { "status": "ACTIVE" },
-      "newValues": { "status": "LOCKED" },
+      "oldValues": "{\"status\":\"ACTIVE\"}",
+      "newValues": "{\"status\":\"LOCKED\"}",
+      "traceId": "uuid-v4",
       "createdAt": "2026-02-22T10:00:00"
     }
   ],
-  "total": 342,
+  "total": 10,
   "page": 1,
   "limit": 50,
-  "totalPages": 7
+  "totalPages": 1
 }
 ```
 > `id`: `audit_logs.id` (Long).  
 > `actorId` / `actorName`: join `users` qua `audit_logs.actor_id`. Nullable (system-triggered).  
-> `action`: `AuditAction` enum — `USER_CREATED | USER_UPDATED | USER_LOCKED | USER_UNLOCKED | BANK_INFO_UPDATED | ROLE_ASSIGNED | ROLE_REVOKED | PERMISSION_GRANTED | PERMISSION_REVOKED | DEPARTMENT_CREATED | DEPARTMENT_UPDATED | DEPARTMENT_DELETED | QUOTA_TOPUP | QUOTA_ADJUSTED | CONFIG_UPDATED | SYSTEM_FUND_ADJUSTED | PROJECT_TOPUP | CATEGORY_BUDGET_UPDATED | PIN_RESET | PIN_LOCKED | USER_LOGIN_SUCCESS | USER_LOGIN_FAILED | DATA_EXPORTED | MANUAL_ADJUSTMENT`.  
-> `entityName`: tên bảng bị tác động (VD: `users`, `departments`, `system_configs`).  
+> `action`: `AuditAction` enum — **3 giá trị:** `INSERT | UPDATE | DELETE` (phản ánh DML operation cơ bản).  
+> `entityName`: tên entity bị tác động (VD: `User`, `Department`, `SystemConfig`, `PayrollPeriod`).  
 > `entityId`: ID dòng dữ liệu bị tác động (String).  
-> `oldValues` / `newValues`: JSON snapshot trạng thái trước/sau. Nullable.
+> `oldValues` / `newValues`: JSON string snapshot trạng thái trước/sau. Nullable.  
+> `traceId`: UUID để trace một operation qua nhiều bảng.
 
 ---
 
@@ -3939,44 +3941,18 @@ Cập nhật cấu hình hệ thống. Gửi danh sách key-value cần cập nh
 
 ---
 
-### Channel 2: `/user/queue/requests` — Live Request Status
+### ~~Channel 2: `/user/queue/requests`~~ — ĐÃ XÓA (v3.3+)
 
-**Mục đích:** Cập nhật trạng thái request real-time khi Team Leader/Manager/Admin approve/reject hoặc Accountant giải ngân.
-
-**Trigger (Backend publish khi):**
-- `POST /team-leader/approvals/:id/approve` → gửi cho requester (status: PENDING_ACCOUNTANT)
-- `POST /team-leader/approvals/:id/reject` → gửi cho requester
-- `POST /manager/approvals/:id/approve` → gửi cho requester (PROJECT_TOPUP → PAID)
-- `POST /manager/approvals/:id/reject` → gửi cho requester
-- `POST /cfo/approvals/:id/approve` → gửi cho requester (DEPARTMENT_TOPUP, sau đó auto-pay)
-- `POST /cfo/approvals/:id/reject` → gửi cho requester
-- `POST /accountant/disbursements/:id/disburse` → gửi cho requester (`status: PAID`)
-- `POST /accountant/disbursements/:id/reject` → gửi cho requester
-
-**Subscribe:** `/user/queue/requests`
-
-**Message payload:**
-```json
-{
-  "type": "REQUEST_STATUS_CHANGED",
-  "data": {
-    "id": 101,
-    "requestCode": "REQ-IT-2602-001",
-    "previousStatus": "PENDING_APPROVAL",
-    "newStatus": "PENDING_ACCOUNTANT",
-    "approvedAmount": 8500000,
-    "rejectReason": null,
-    "actor": {
-      "id": 8,
-      "fullName": "Le Van Minh",
-      "role": "TEAM_LEADER"
-    },
-    "comment": "Approved — looks good.",
-    "updatedAt": "2026-02-25T10:30:00"
-  },
-  "timestamp": "2026-02-25T10:30:00"
-}
-```
+> ⚠ **Deprecated:** Kênh STOMP `REQUEST_STATUS_CHANGED` đã bị loại bỏ kể từ v3.3 khi hệ thống chuyển sang **Server-Sent Events (SSE)**.  
+> Backend **không còn emit** event riêng cho request status changes.  
+> Frontend tự **refetch** list/detail sau mỗi action approve/reject/disburse.  
+>
+> Xem §15 (SSE Realtime) để biết các events hiện tại: `wallet.updated`, `transaction.created`, `notification`.
+>
+> **Status enum đúng hiện tại:**  
+> `PENDING` → `APPROVED_BY_TEAM_LEADER` → `PAID` (Flow 1)  
+> `PENDING` → `APPROVED_BY_MANAGER` → `PAID` (Flow 2)  
+> `PENDING` → `APPROVED_BY_CFO` → `PAID` (Flow 3)
 > `previousStatus` / `newStatus`: trạng thái trước/sau — FE dùng để animate badge transition.  
 > `actor`: người thực hiện action — hiển thị trong toast _"Le Van Minh đã duyệt đơn REQ-IT-2602-001"_.  
 > `rejectReason`: chỉ có khi `newStatus = REJECTED`.  
