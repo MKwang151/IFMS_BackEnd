@@ -28,6 +28,8 @@ import com.mkwang.backend.modules.accounting.repository.PayrollPeriodSpecificati
 import com.mkwang.backend.modules.accounting.repository.PayslipRepository;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
 import com.mkwang.backend.modules.profile.repository.UserProfileRepository;
+import com.mkwang.backend.modules.notification.publisher.NotificationEvent;
+import com.mkwang.backend.modules.notification.publisher.NotificationPublisher;
 import com.mkwang.backend.modules.request.service.RequestService;
 import com.mkwang.backend.modules.wallet.entity.ReferenceType;
 import com.mkwang.backend.modules.wallet.entity.TransactionType;
@@ -75,6 +77,7 @@ public class PayrollManagementServiceImpl implements PayrollManagementService {
     private final UserProfileRepository userProfileRepository;
     private final RequestService requestService;
     private final WalletService walletService;
+    private final NotificationPublisher notificationPublisher;
 
     // ─────────────────────────────────────────────────────────────────
     // GET /accountant/payroll
@@ -516,6 +519,24 @@ public class PayrollManagementServiceImpl implements PayrollManagementService {
             payslip.setStatus(PayslipStatus.PAID);
             payslip.setPaymentDate(LocalDateTime.now());
             totalNetPayroll = totalNetPayroll.add(finalNet);
+
+            // Notify employee: lương đã được chi trả
+            try {
+                User employee = payslip.getUser();
+                notificationPublisher.publish(new NotificationEvent(
+                        employee.getId(),
+                        employee.getEmail(),
+                        "SALARY_PAID",
+                        "Lương đã được thanh toán",
+                        "Phiếu lương " + payslip.getPayslipCode()
+                                + " đã được chi trả. Số tiền: "
+                                + String.format("%,.0f", finalNet) + " ₫",
+                        payslip.getId(),
+                        "PAYSLIP"
+                ));
+            } catch (Exception e) {
+                // Notification failure must never break the payroll transaction
+            }
         }
 
         period.setStatus(PayrollStatus.COMPLETED);

@@ -225,6 +225,7 @@ public class RequestServiceImpl implements RequestService {
         savedFiles.forEach(request::addAttachment);
         Request saved = requestRepository.save(request);
 
+        // Flow 1: ADVANCE/EXPENSE/REIMBURSE → notify Team Leader(s) of the project
         if (FLOW1_TYPES.contains(req.getType()) && project != null) {
             List<User> leaders = projectMemberRepository
                     .findByProject_IdAndProjectRole(project.getId(), ProjectRole.LEADER)
@@ -232,6 +233,31 @@ public class RequestServiceImpl implements RequestService {
             notifyAll(leaders, "REQUEST_SUBMITTED",
                     "Yêu cầu mới cần duyệt",
                     requester.getFullName() + " đã gửi yêu cầu " + req.getType()
+                            + " - " + saved.getRequestCode(),
+                    saved.getId());
+        }
+
+        // Flow 2: PROJECT_TOPUP → notify Manager of the project's department
+        if (req.getType() == RequestType.PROJECT_TOPUP && project != null
+                && project.getDepartment() != null) {
+            Long deptId = project.getDepartment().getId();
+            List<User> managers = userService.getUsersByDepartmentIdWithProfile(deptId)
+                    .stream()
+                    .filter(u -> u.getRole() != null && "MANAGER".equals(u.getRole().getName()))
+                    .toList();
+            notifyAll(managers, "REQUEST_SUBMITTED",
+                    "Yêu cầu nạp quỹ dự án cần duyệt",
+                    requester.getFullName() + " đã gửi yêu cầu PROJECT_TOPUP"
+                            + " - " + saved.getRequestCode(),
+                    saved.getId());
+        }
+
+        // Flow 3: DEPARTMENT_TOPUP → notify all active CFOs
+        if (req.getType() == RequestType.DEPARTMENT_TOPUP) {
+            List<User> cfos = userService.getActiveUsersByRoleName("CFO");
+            notifyAll(cfos, "REQUEST_SUBMITTED",
+                    "Yêu cầu cấp quota phòng ban cần duyệt",
+                    requester.getFullName() + " đã gửi yêu cầu DEPARTMENT_TOPUP"
                             + " - " + saved.getRequestCode(),
                     saved.getId());
         }
