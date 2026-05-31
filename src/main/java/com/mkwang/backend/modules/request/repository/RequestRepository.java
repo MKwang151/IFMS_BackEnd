@@ -8,6 +8,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.mkwang.backend.modules.request.entity.RequestStatus;
+import com.mkwang.backend.modules.request.entity.RequestType;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -206,6 +210,33 @@ public interface RequestRepository extends JpaRepository<Request, Long>, JpaSpec
             ORDER BY r.createdAt DESC
             """)
     List<Request> findRecentDeptTopup(org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Monthly spending aggregation for an employee's paid requests.
+     * Returns rows: [year(int), month(int), type(RequestType), sum(BigDecimal)]
+     * Used for the employee spending analytics chart.
+     */
+    @Query("""
+            SELECT EXTRACT(YEAR FROM r.paidAt),
+                   EXTRACT(MONTH FROM r.paidAt),
+                   r.type,
+                   COALESCE(SUM(r.approvedAmount), 0)
+            FROM Request r
+            WHERE r.requester.id = :userId
+              AND r.status = :status
+              AND r.type IN :types
+              AND r.paidAt >= :from
+              AND r.paidAt <= :to
+            GROUP BY EXTRACT(YEAR FROM r.paidAt), EXTRACT(MONTH FROM r.paidAt), r.type
+            ORDER BY EXTRACT(YEAR FROM r.paidAt), EXTRACT(MONTH FROM r.paidAt)
+            """)
+    List<Object[]> sumPaidByMonthAndType(
+            @Param("userId") Long userId,
+            @Param("status") RequestStatus status,
+            @Param("types") List<RequestType> types,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to
+    );
 }
 
 

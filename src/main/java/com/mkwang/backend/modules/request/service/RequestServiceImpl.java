@@ -323,6 +323,23 @@ public class RequestServiceImpl implements RequestService {
 
     @Override
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_VIEW_SELF')")
+    public java.util.List<com.mkwang.backend.modules.request.dto.response.AdvanceBalanceItem> getMyAdvanceBalances(Long userId) {
+        return advanceBalanceRepository
+                .findByUserIdAndStatusNot(userId, com.mkwang.backend.modules.request.entity.AdvanceBalanceStatus.SETTLED)
+                .stream()
+                .map(ab -> com.mkwang.backend.modules.request.dto.response.AdvanceBalanceItem.builder()
+                        .id(ab.getId())
+                        .requestCode(ab.getAdvanceRequest().getRequestCode())
+                        .originalAmount(ab.getOriginalAmount())
+                        .remainingAmount(ab.getRemainingAmount())
+                        .status(ab.getStatus())
+                        .build())
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('REQUEST_APPROVE_TEAM_LEADER')")
     public PageResponse<TlApprovalSummaryResponse> getTlApprovals(
             Long leaderId, RequestType type, Long projectId, String search, int page, int size) {

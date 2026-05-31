@@ -27,6 +27,7 @@ import com.mkwang.backend.modules.request.dto.response.TlRejectResponse;
 import com.mkwang.backend.modules.request.entity.RequestStatus;
 import com.mkwang.backend.modules.request.entity.RequestType;
 
+import com.mkwang.backend.modules.request.dto.response.AdvanceBalanceItem;
 import com.mkwang.backend.modules.request.dto.response.CfoDeptTopupItemResponse;
 
 import java.math.BigDecimal;
@@ -46,6 +47,8 @@ public interface RequestService {
     RequestDetailResponse updateRequest(Long id, UpdateRequestRequest req, Long userId);
 
     void cancelRequest(Long id, Long userId);
+
+    List<AdvanceBalanceItem> getMyAdvanceBalances(Long userId);
 
     PageResponse<TlApprovalSummaryResponse> getTlApprovals(
             Long leaderId, RequestType type, Long projectId, String search, int page, int size);

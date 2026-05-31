@@ -5,6 +5,7 @@ import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.modules.auth.security.UserDetailsAdapter;
 import com.mkwang.backend.modules.request.dto.request.CreateRequestRequest;
 import com.mkwang.backend.modules.request.dto.request.UpdateRequestRequest;
+import com.mkwang.backend.modules.request.dto.response.AdvanceBalanceItem;
 import com.mkwang.backend.modules.request.dto.response.RequestDetailResponse;
 import com.mkwang.backend.modules.request.dto.response.RequestSummaryResponse;
 import com.mkwang.backend.modules.request.entity.RequestStatus;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -119,6 +121,17 @@ public class RequestController {
             @AuthenticationPrincipal UserDetailsAdapter principal) {
         requestService.cancelRequest(id, principal.getUser().getId());
         return ResponseEntity.ok(ApiResponse.success(Map.of("message", "Request cancelled successfully")));
+    }
+
+    @GetMapping("/my-advance-balances")
+    @Operation(
+        summary = "List my outstanding advance balances",
+        description = "Returns all OUTSTANDING or PARTIALLY_SETTLED advance balances for the current user. Used to populate the advance-balance selector when creating a REIMBURSE request."
+    )
+    public ResponseEntity<ApiResponse<List<AdvanceBalanceItem>>> getMyAdvanceBalances(
+            @AuthenticationPrincipal UserDetailsAdapter principal) {
+        return ResponseEntity.ok(ApiResponse.success(
+                requestService.getMyAdvanceBalances(principal.getUser().getId())));
     }
 }
 
