@@ -1,5 +1,6 @@
 package com.mkwang.backend.modules.request.dto.response;
 
+import com.mkwang.backend.modules.request.entity.RequestStatus;
 import com.mkwang.backend.modules.request.entity.RequestType;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,7 +14,9 @@ public class TlApprovalSummaryResponse {
     private Long id;
     private String requestCode;
     private RequestType type;
+    private RequestStatus status;
     private BigDecimal amount;
+    private String description;
     private RequesterSnippet requester;
     private ProjectSnippet project;
     private PhaseSnippet phase;
@@ -28,6 +31,8 @@ public class TlApprovalSummaryResponse {
         private String fullName;
         private String avatar;
         private String employeeCode;
+        private String jobTitle;
+        private String email;
     }
 
     @Getter
@@ -35,6 +40,7 @@ public class TlApprovalSummaryResponse {
     public static class ProjectSnippet {
         private Long id;
         private String projectCode;
+        private String name;
     }
 
     @Getter
@@ -42,6 +48,9 @@ public class TlApprovalSummaryResponse {
     public static class PhaseSnippet {
         private Long id;
         private String phaseCode;
+        private String name;
+        private BigDecimal budgetLimit;
+        private BigDecimal currentSpent;
     }
 }
 
