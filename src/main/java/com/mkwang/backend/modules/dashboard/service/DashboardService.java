@@ -1,7 +1,9 @@
 package com.mkwang.backend.modules.dashboard.service;
 
 import com.mkwang.backend.modules.dashboard.dto.response.AccountantDashboardResponse;
+import com.mkwang.backend.modules.dashboard.dto.response.AdminAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.AdminDashboardResponse;
+import com.mkwang.backend.modules.dashboard.dto.response.CashFlowAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.CfoDashboardResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.ManagerDashboardResponse;
 
@@ -14,4 +16,8 @@ public interface DashboardService {
     CfoDashboardResponse getCfoDashboard();
 
     AdminDashboardResponse getAdminDashboard();
+
+    CashFlowAnalyticsResponse getCashFlowAnalytics(String period, String unit);
+
+    AdminAnalyticsResponse getAdminAnalytics();
 }

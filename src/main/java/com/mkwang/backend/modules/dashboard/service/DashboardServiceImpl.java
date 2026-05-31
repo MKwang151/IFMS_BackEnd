@@ -5,32 +5,47 @@ import com.mkwang.backend.modules.accounting.service.PayrollManagementService;
 import com.mkwang.backend.modules.audit.dto.response.AuditLogResponse;
 import com.mkwang.backend.modules.audit.service.AuditLogService;
 import com.mkwang.backend.modules.dashboard.dto.response.AccountantDashboardResponse;
+import com.mkwang.backend.modules.dashboard.dto.response.AdminAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.AdminDashboardResponse;
+import com.mkwang.backend.modules.dashboard.dto.response.CashFlowAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.CfoDashboardResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.ManagerDashboardResponse;
+import com.mkwang.backend.modules.organization.entity.Department;
+import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
 import com.mkwang.backend.modules.organization.service.DepartmentService;
 import com.mkwang.backend.modules.project.entity.ProjectStatus;
 import com.mkwang.backend.modules.project.service.ManagerProjectService;
 import com.mkwang.backend.modules.request.dto.response.CfoDeptTopupItemResponse;
+import com.mkwang.backend.modules.request.repository.AdvanceBalanceRepository;
 import com.mkwang.backend.modules.request.service.RequestService;
 import com.mkwang.backend.modules.user.entity.User;
 import com.mkwang.backend.modules.user.service.UserService;
 import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
+import com.mkwang.backend.modules.wallet.repository.LedgerEntryRepository;
 import com.mkwang.backend.modules.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class DashboardServiceImpl implements DashboardService {
+
+    private static final BigDecimal MILLION = BigDecimal.valueOf(1_000_000);
 
     private final UserService userService;
     private final ManagerProjectService managerProjectService;
@@ -39,6 +54,9 @@ public class DashboardServiceImpl implements DashboardService {
     private final PayrollManagementService payrollManagementService;
     private final AuditLogService auditLogService;
     private final DepartmentService departmentService;
+    private final DepartmentRepository departmentRepository;
+    private final LedgerEntryRepository ledgerEntryRepository;
+    private final AdvanceBalanceRepository advanceBalanceRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -168,5 +186,142 @@ public class DashboardServiceImpl implements DashboardService {
                 .totalWalletBalance(totalWalletBalance)
                 .recentAuditEvents(recentEvents)
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyAuthority('PAYROLL_MANAGE', 'USER_VIEW_LIST')")
+    public CashFlowAnalyticsResponse getCashFlowAnalytics(String period, String unit) {
+        List<int[]> months = resolveMonths(period);
+        boolean inMillions = "million".equalsIgnoreCase(unit);
+
+        List<CashFlowAnalyticsResponse.CashFlowPoint> points = new ArrayList<>();
+        BigDecimal totalInflow  = BigDecimal.ZERO;
+        BigDecimal totalOutflow = BigDecimal.ZERO;
+
+        for (int[] ym : months) {
+            int year = ym[0];
+            int month = ym[1];
+            BigDecimal inflow  = walletService.getCompanyFundMonthlyInflow(year, month);
+            BigDecimal outflow = walletService.getCompanyFundMonthlyOutflow(year, month);
+
+            if (inMillions) {
+                inflow  = inflow.divide(MILLION, 2, RoundingMode.HALF_UP);
+                outflow = outflow.divide(MILLION, 2, RoundingMode.HALF_UP);
+            }
+
+            totalInflow  = totalInflow.add(inflow);
+            totalOutflow = totalOutflow.add(outflow);
+            points.add(CashFlowAnalyticsResponse.CashFlowPoint.builder()
+                    .label(buildLabel(year, month, period))
+                    .inflow(inflow)
+                    .outflow(outflow)
+                    .build());
+        }
+
+        return CashFlowAnalyticsResponse.builder()
+                .period(period)
+                .points(points)
+                .totalInflow(totalInflow)
+                .totalOutflow(totalOutflow)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('USER_VIEW_LIST')")
+    public AdminAnalyticsResponse getAdminAnalytics() {
+        LocalDate now     = LocalDate.now();
+        LocalDateTime from = now.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime to   = now.atTime(LocalTime.MAX);
+
+        // ── Dept spending (MTD DEBIT on DEPARTMENT wallets) ─────────
+        List<Object[]> rawSpending = ledgerEntryRepository
+                .sumDebitGroupedByOwnerAndRange(WalletOwnerType.DEPARTMENT, from, to);
+
+        Map<Long, BigDecimal> spendByDeptId = rawSpending.stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> (BigDecimal) row[1]));
+
+        List<Department> allDepts = departmentRepository.findAll();
+        List<AdminAnalyticsResponse.DeptSpendingItem> deptSpending = allDepts.stream()
+                .filter(d -> spendByDeptId.containsKey(d.getId()))
+                .sorted((a, b) -> spendByDeptId.get(b.getId()).compareTo(spendByDeptId.get(a.getId())))
+                .map(d -> AdminAnalyticsResponse.DeptSpendingItem.builder()
+                        .deptId(d.getId())
+                        .deptName(d.getName())
+                        .spent(spendByDeptId.get(d.getId()))
+                        .build())
+                .collect(Collectors.toList());
+
+        // ── Top debtors (system-wide outstanding advance balance) ────
+        List<Object[]> rawDebtors = advanceBalanceRepository
+                .findTopDebtorsSystemWide(PageRequest.of(0, 10));
+
+        LocalDateTime nowDt = LocalDateTime.now();
+        List<AdminAnalyticsResponse.TopDebtorItem> topDebtors = rawDebtors.stream()
+                .map(row -> {
+                    Long    userId    = (Long)          row[0];
+                    String  name      = (String)        row[1];
+                    String  dept      = row[2] != null ? (String) row[2] : "—";
+                    BigDecimal amount = (BigDecimal)    row[3];
+                    LocalDateTime oldest = (LocalDateTime) row[4];
+                    long days = oldest != null ? ChronoUnit.DAYS.between(oldest, nowDt) : 0;
+                    return AdminAnalyticsResponse.TopDebtorItem.builder()
+                            .userId(userId)
+                            .fullName(name)
+                            .deptName(dept)
+                            .outstandingAmount(amount)
+                            .daysSinceDisbursement(days)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        return AdminAnalyticsResponse.builder()
+                .deptSpending(deptSpending)
+                .topDebtors(topDebtors)
+                .build();
+    }
+
+    // ── Private helpers ──────────────────────────────────────────────
+
+    private List<int[]> resolveMonths(String period) {
+        LocalDate now = LocalDate.now();
+        int currentYear  = now.getYear();
+        int currentMonth = now.getMonthValue();
+
+        if ("ytd".equalsIgnoreCase(period)) {
+            List<int[]> list = new ArrayList<>();
+            for (int m = 1; m <= currentMonth; m++) list.add(new int[]{currentYear, m});
+            return list;
+        }
+        if ("last6m".equalsIgnoreCase(period)) {
+            List<int[]> list = new ArrayList<>();
+            for (int i = 5; i >= 0; i--) {
+                LocalDate d = now.minusMonths(i);
+                list.add(new int[]{d.getYear(), d.getMonthValue()});
+            }
+            return list;
+        }
+        if (period != null && period.toLowerCase().startsWith("fy")) {
+            int year = Integer.parseInt(period.substring(2));
+            int maxMonth = (year == currentYear) ? currentMonth : 12;
+            List<int[]> list = new ArrayList<>();
+            for (int m = 1; m <= maxMonth; m++) list.add(new int[]{year, m});
+            return list;
+        }
+        // default: last6m
+        return resolveMonths("last6m");
+    }
+
+    private String buildLabel(int year, int month, String period) {
+        boolean isFy = period != null && period.toLowerCase().startsWith("fy");
+        if (isFy) {
+            return "T" + month;
+        }
+        // ytd or last6m: "T{m}/{2-digit-year}"
+        String yy = String.valueOf(year).substring(2);
+        return "T" + month + "/" + yy;
     }
 }

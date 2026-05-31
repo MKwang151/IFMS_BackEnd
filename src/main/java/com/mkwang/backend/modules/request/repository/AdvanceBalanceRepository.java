@@ -61,4 +61,22 @@ public interface AdvanceBalanceRepository extends JpaRepository<AdvanceBalance, 
         AND ab.user.department.id = :deptId
       """)
   long countEmployeesWithDebtByDeptId(@Param("deptId") Long deptId);
+
+  /**
+   * Top debtors system-wide.
+   * Returns Object[] per group: [userId, fullName, deptName, totalRemaining, oldestCreatedAt].
+   * Caller computes daysSince from oldestCreatedAt.
+   */
+  @Query("""
+      SELECT ab.user.id,
+             ab.user.fullName,
+             ab.user.department.name,
+             COALESCE(SUM(ab.remainingAmount), 0),
+             MIN(ab.createdAt)
+      FROM AdvanceBalance ab
+      WHERE ab.status <> 'SETTLED' AND ab.remainingAmount > 0
+      GROUP BY ab.user.id, ab.user.fullName, ab.user.department.name
+      ORDER BY COALESCE(SUM(ab.remainingAmount), 0) DESC
+      """)
+  List<Object[]> findTopDebtorsSystemWide(org.springframework.data.domain.Pageable pageable);
 }

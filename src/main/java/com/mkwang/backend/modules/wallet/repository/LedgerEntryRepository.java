@@ -95,4 +95,20 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long>,
    */
   @Query("SELECT e FROM LedgerEntry e JOIN FETCH e.wallet WHERE e.transaction.id = :transactionId")
   List<LedgerEntry> findByTransactionIdWithWallet(@Param("transactionId") Long transactionId);
+
+  /**
+   * Sum of DEBIT amounts grouped by wallet.ownerId, for a specific ownerType and date range.
+   * Returns List<Object[]> where [0]=ownerId (Long), [1]=totalDebited (BigDecimal).
+   * Used by Admin analytics to compute department spending for the period.
+   */
+  @Query("SELECT e.wallet.ownerId, COALESCE(SUM(e.amount), 0) " +
+         "FROM LedgerEntry e " +
+         "WHERE e.wallet.ownerType = :ownerType " +
+         "AND e.direction = 'DEBIT' " +
+         "AND e.createdAt >= :from AND e.createdAt <= :to " +
+         "GROUP BY e.wallet.ownerId")
+  List<Object[]> sumDebitGroupedByOwnerAndRange(
+      @Param("ownerType") com.mkwang.backend.modules.wallet.entity.WalletOwnerType ownerType,
+      @Param("from") java.time.LocalDateTime from,
+      @Param("to") java.time.LocalDateTime to);
 }
