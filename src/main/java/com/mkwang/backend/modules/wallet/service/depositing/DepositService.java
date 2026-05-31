@@ -5,7 +5,10 @@ import com.mkwang.backend.modules.payment.dto.response.PaymentCallbackResult;
 import com.mkwang.backend.modules.payment.dto.response.VnpayIpnResponse;
 import com.mkwang.backend.modules.wallet.dto.request.CreateDepositRequest;
 import com.mkwang.backend.modules.wallet.dto.response.DepositLogResponse;
+import com.mkwang.backend.modules.wallet.entity.DepositStatus;
 import org.springframework.data.domain.Pageable;
+
+import java.time.LocalDate;
 
 public interface DepositService {
 
@@ -25,7 +28,7 @@ public interface DepositService {
     VnpayIpnResponse processIpn(PaymentCallbackResult result);
 
     /**
-     * User views their own deposit history.
+     * User views their own deposit history with optional filters.
      */
-    PageResponse<DepositLogResponse> getMyDeposits(Long userId, Pageable pageable);
+    PageResponse<DepositLogResponse> getMyDeposits(Long userId, DepositStatus status, LocalDate from, LocalDate to, Pageable pageable);
 }

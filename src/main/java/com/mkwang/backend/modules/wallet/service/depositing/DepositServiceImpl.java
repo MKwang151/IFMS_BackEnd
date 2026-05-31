@@ -23,6 +23,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -108,9 +111,13 @@ public class DepositServiceImpl implements DepositService {
     @Override
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('WALLET_DEPOSIT')")
-    public PageResponse<DepositLogResponse> getMyDeposits(Long userId, Pageable pageable) {
+    public PageResponse<DepositLogResponse> getMyDeposits(
+            Long userId, DepositStatus status, LocalDate from, LocalDate to, Pageable pageable) {
+        java.time.LocalDateTime fromDt = from != null ? from.atStartOfDay() : null;
+        java.time.LocalDateTime toDt   = to   != null ? to.atTime(LocalTime.MAX) : null;
+
         Page<DepositLogResponse> page = depositLogRepository
-                .findByUserIdOrderByCreatedAtDesc(userId, pageable)
+                .findByUserIdWithFilters(userId, status, fromDt, toDt, pageable)
                 .map(d -> toResponse(d, null));
 
         return PageResponse.<DepositLogResponse>builder()
