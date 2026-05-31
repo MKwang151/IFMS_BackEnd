@@ -9,6 +9,7 @@ import com.mkwang.backend.modules.dashboard.dto.response.AdminAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.AdminDashboardResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.CashFlowAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.CfoDashboardResponse;
+import com.mkwang.backend.modules.dashboard.dto.response.EmployeeSpendingAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.ManagerDashboardResponse;
 import com.mkwang.backend.modules.organization.entity.Department;
 import com.mkwang.backend.modules.organization.repository.DepartmentRepository;
@@ -57,6 +58,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final DepartmentRepository departmentRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final AdvanceBalanceRepository advanceBalanceRepository;
+    private final com.mkwang.backend.modules.request.repository.RequestRepository requestRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -281,6 +283,63 @@ public class DashboardServiceImpl implements DashboardService {
         return AdminAnalyticsResponse.builder()
                 .deptSpending(deptSpending)
                 .topDebtors(topDebtors)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('REQUEST_VIEW_SELF')")
+    public EmployeeSpendingAnalyticsResponse getEmployeeSpendingAnalytics(Long userId) {
+        LocalDate now = LocalDate.now();
+
+        // Build last-6-months window
+        List<int[]> months = new ArrayList<>();
+        for (int i = 5; i >= 0; i--) {
+            LocalDate d = now.minusMonths(i);
+            months.add(new int[]{d.getYear(), d.getMonthValue()});
+        }
+        LocalDateTime from = now.minusMonths(5).withDayOfMonth(1).atStartOfDay();
+        LocalDateTime to   = now.atTime(LocalTime.MAX);
+
+        List<com.mkwang.backend.modules.request.entity.RequestType> types = List.of(
+                com.mkwang.backend.modules.request.entity.RequestType.ADVANCE,
+                com.mkwang.backend.modules.request.entity.RequestType.EXPENSE,
+                com.mkwang.backend.modules.request.entity.RequestType.REIMBURSE
+        );
+
+        List<Object[]> rows = requestRepository.sumPaidByMonthAndType(
+                userId, com.mkwang.backend.modules.request.entity.RequestStatus.PAID, types, from, to);
+
+        // Map (year_month_type) -> BigDecimal
+        Map<String, BigDecimal> dataMap = new java.util.HashMap<>();
+        for (Object[] row : rows) {
+            int year  = ((Number) row[0]).intValue();
+            int month = ((Number) row[1]).intValue();
+            String type = row[2].toString();
+            BigDecimal sum = (BigDecimal) row[3];
+            dataMap.put(year + "_" + month + "_" + type, sum);
+        }
+
+        List<EmployeeSpendingAnalyticsResponse.SpendingPoint> points = new ArrayList<>();
+        for (int[] ym : months) {
+            int year  = ym[0];
+            int month = ym[1];
+            String yy = String.valueOf(year).substring(2);
+            String label = "T" + month + "/" + yy;
+
+            BigDecimal expense   = dataMap.getOrDefault(year + "_" + month + "_EXPENSE",   BigDecimal.ZERO);
+            BigDecimal reimburse = dataMap.getOrDefault(year + "_" + month + "_REIMBURSE", BigDecimal.ZERO);
+            BigDecimal advance   = dataMap.getOrDefault(year + "_" + month + "_ADVANCE",   BigDecimal.ZERO);
+
+            points.add(EmployeeSpendingAnalyticsResponse.SpendingPoint.builder()
+                    .label(label)
+                    .chiTieu(expense.add(reimburse))
+                    .tamUng(advance)
+                    .build());
+        }
+
+        return EmployeeSpendingAnalyticsResponse.builder()
+                .points(points)
                 .build();
     }
 

@@ -7,6 +7,7 @@ import com.mkwang.backend.modules.dashboard.dto.response.AdminAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.AdminDashboardResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.CashFlowAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.CfoDashboardResponse;
+import com.mkwang.backend.modules.dashboard.dto.response.EmployeeSpendingAnalyticsResponse;
 import com.mkwang.backend.modules.dashboard.dto.response.ManagerDashboardResponse;
 import com.mkwang.backend.modules.dashboard.service.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -95,6 +96,18 @@ public class DashboardController {
     public ResponseEntity<ApiResponse<AdminAnalyticsResponse>> getAdminAnalytics() {
         return ResponseEntity.ok(ApiResponse.success(
                 dashboardService.getAdminAnalytics()
+        ));
+    }
+
+    @GetMapping("/analytics/employee")
+    @Operation(
+        summary = "Employee spending analytics — last 6 months",
+        description = "Returns monthly breakdown of EXPENSE/REIMBURSE (chiTieu) and ADVANCE (tamUng) amounts paid for the authenticated employee."
+    )
+    public ResponseEntity<ApiResponse<EmployeeSpendingAnalyticsResponse>> getEmployeeSpendingAnalytics(
+            @AuthenticationPrincipal UserDetailsAdapter principal) {
+        return ResponseEntity.ok(ApiResponse.success(
+                dashboardService.getEmployeeSpendingAnalytics(principal.getUser().getId())
         ));
     }
 }
