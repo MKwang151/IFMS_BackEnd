@@ -12,5 +12,8 @@ import lombok.NoArgsConstructor;
 public class PinVerifyResponse {
 
     private boolean valid;
+
+    /** Number of attempts remaining before PIN lockout. Null when valid=true. */
+    private Integer attemptsRemaining;
 }
 

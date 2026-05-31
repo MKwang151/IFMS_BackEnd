@@ -212,7 +212,11 @@ public class ProfileServiceImpl implements ProfileService {
                 throw new LockedException("PIN has been locked due to too many failed attempts");
             }
             userSecuritySettingsRepository.save(settings);
-            throw new UnauthorizedException("Invalid PIN");
+            int remaining = pinValidator.getMaxRetry() - settings.getRetryCount();
+            return PinVerifyResponse.builder()
+                    .valid(false)
+                    .attemptsRemaining(remaining)
+                    .build();
         }
 
         settings.resetRetryCount();
