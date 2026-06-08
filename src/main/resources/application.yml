@@ -187,6 +187,9 @@ app:
     length: ${OTP_LENGTH:6}
   auth:
     setup-token-ttl-minutes: ${SETUP_TOKEN_TTL_MINUTES:15}   # First-login setup token TTL (phút)
+  demo:
+    reset-accounts-on-startup: ${DEMO_RESET_ACCOUNTS_ON_STARTUP:true}
+    reset-payroll-wallets-on-startup: ${DEMO_RESET_PAYROLL_WALLETS_ON_STARTUP:true}
   notification:
     cleanup-cron: ${NOTIFICATION_CLEANUP_CRON:0 0 0 * * *}   # Xóa notification đã đọc lúc 00:00 mỗi ngày
 

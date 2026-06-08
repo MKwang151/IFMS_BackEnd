@@ -78,8 +78,8 @@ public class AuthServiceImpl implements AuthService {
         // Phải set thủ công sau khi authenticationManager xác thực thành công.
         AuditContextHolder.setActorId(user.getId());
 
-        // First-login gate: chưa phát token, yêu cầu đổi mật khẩu + đặt PIN
-        if (Boolean.TRUE.equals(user.getIsFirstLogin())) {
+        // First-login gate: ADMIN được vào thẳng, các role nghiệp vụ phải đổi mật khẩu + đặt PIN.
+        if (requiresFirstLoginSetup(user)) {
             String setupToken = UUID.randomUUID().toString();
             stringRedisTemplate.opsForValue().set(
                     FIRST_LOGIN_SETUP_PREFIX + setupToken,
@@ -326,6 +326,11 @@ public class AuthServiceImpl implements AuthService {
                 .refreshToken(refreshToken)
                 .user(buildUserInfo(user))
                 .build();
+    }
+
+    private boolean requiresFirstLoginSetup(User user) {
+        String roleName = user.getRole() != null ? user.getRole().getName() : null;
+        return Boolean.TRUE.equals(user.getIsFirstLogin()) && !"ADMIN".equals(roleName);
     }
 
     private UserInfoResponse buildUserInfo(User user) {

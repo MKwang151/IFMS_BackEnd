@@ -1,7 +1,13 @@
 package com.mkwang.backend.config;
 
 import com.mkwang.backend.modules.accounting.entity.CompanyFund;
+import com.mkwang.backend.modules.accounting.entity.PayrollPeriod;
+import com.mkwang.backend.modules.accounting.entity.PayrollStatus;
+import com.mkwang.backend.modules.accounting.entity.Payslip;
+import com.mkwang.backend.modules.accounting.entity.PayslipStatus;
 import com.mkwang.backend.modules.accounting.repository.CompanyFundRepository;
+import com.mkwang.backend.modules.accounting.repository.PayrollPeriodRepository;
+import com.mkwang.backend.modules.accounting.repository.PayslipRepository;
 import com.mkwang.backend.modules.config.entity.SystemConfig;
 import com.mkwang.backend.modules.config.repository.SystemConfigRepository;
 import com.mkwang.backend.modules.project.entity.*;
@@ -17,6 +23,7 @@ import com.mkwang.backend.modules.wallet.entity.WalletOwnerType;
 import com.mkwang.backend.modules.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -52,6 +60,8 @@ public class DataInitializer implements CommandLineRunner {
     private final DepartmentRepository          departmentRepository;
     private final WalletRepository              walletRepository;
     private final CompanyFundRepository         companyFundRepository;
+    private final PayrollPeriodRepository       payrollPeriodRepository;
+    private final PayslipRepository             payslipRepository;
     private final SystemConfigRepository        systemConfigRepository;
     private final ExpenseCategoryRepository     expenseCategoryRepository;
     private final ProjectRepository             projectRepository;
@@ -62,6 +72,39 @@ public class DataInitializer implements CommandLineRunner {
 
     private static final String DEFAULT_PASSWORD     = "Ifms@2026";
     private static final BigDecimal INITIAL_FUND     = new BigDecimal("50000000000"); // 50 tỷ VND
+    private static final String DEMO_PAYROLL_PERIOD_CODE = "PR-DEMO-2026-06";
+    private static final int DEMO_PAYROLL_MONTH = 6;
+    private static final int DEMO_PAYROLL_YEAR = 2026;
+    private static final List<String> DEMO_NON_ADMIN_EMAILS = List.of(
+            "cfo@ifms.vn",
+            "accountant@ifms.vn",
+            "manager.it@ifms.vn",
+            "tl.it@ifms.vn",
+            "emp.it1@ifms.vn",
+            "emp.it2@ifms.vn",
+            "emp.sales1@ifms.vn",
+            "emp.fin1@ifms.vn"
+    );
+
+    private static final List<DemoPayrollAccount> DEMO_PAYROLL_ACCOUNTS = List.of(
+            new DemoPayrollAccount("admin@ifms.vn", new BigDecimal("10000000")),
+            new DemoPayrollAccount("cfo@ifms.vn", new BigDecimal("50000000")),
+            new DemoPayrollAccount("accountant@ifms.vn", new BigDecimal("20000000")),
+            new DemoPayrollAccount("manager.it@ifms.vn", new BigDecimal("35000000")),
+            new DemoPayrollAccount("tl.it@ifms.vn", new BigDecimal("28000000")),
+            new DemoPayrollAccount("emp.it1@ifms.vn", new BigDecimal("18500000")),
+            new DemoPayrollAccount("emp.it2@ifms.vn", new BigDecimal("16000000")),
+            new DemoPayrollAccount("emp.sales1@ifms.vn", new BigDecimal("15000000")),
+            new DemoPayrollAccount("emp.fin1@ifms.vn", new BigDecimal("12000000"))
+    );
+
+    @Value("${app.demo.reset-accounts-on-startup:true}")
+    private boolean resetDemoAccountsOnStartup;
+
+    @Value("${app.demo.reset-payroll-wallets-on-startup:true}")
+    private boolean resetDemoPayrollWalletsOnStartup;
+
+    private record DemoPayrollAccount(String email, BigDecimal netSalary) {}
 
     // =========================================================
     // ENTRY POINT
@@ -76,7 +119,9 @@ public class DataInitializer implements CommandLineRunner {
         initRoles();
         initDepartments();
         initUsers();
+        resetDemoAccountsForFirstLoginIfEnabled();
         initCompanyFund();
+        resetDemoPayrollWalletsIfEnabled();
         initSystemConfigs();
         initExpenseCategories();
         initProjects();
@@ -605,7 +650,7 @@ public class DataInitializer implements CommandLineRunner {
                 .password(passwordEncoder.encode(DEFAULT_PASSWORD))
                 .role(role)
                 .status(UserStatus.ACTIVE)
-                .isFirstLogin(true)
+                .isFirstLogin(!"ADMIN".equals(role.getName()))
                 .build();
 
         user = userRepository.save(user);
@@ -641,6 +686,103 @@ public class DataInitializer implements CommandLineRunner {
                     .lockedBalance(BigDecimal.ZERO)
                     .build());
         }
+    }
+
+    private void resetDemoAccountsForFirstLoginIfEnabled() {
+        if (!resetDemoAccountsOnStartup) {
+            log.info("   Demo account reset disabled.");
+            return;
+        }
+
+        resetDemoAccount("admin@ifms.vn", false);
+        DEMO_NON_ADMIN_EMAILS.forEach(email -> resetDemoAccount(email, true));
+    }
+
+    private void resetDemoAccount(String email, boolean requiresFirstLogin) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            user.setPassword(passwordEncoder.encode(DEFAULT_PASSWORD));
+            user.setIsFirstLogin(requiresFirstLogin);
+            user.setTokenVersion(user.getTokenVersion() + 1);
+            userRepository.save(user);
+            log.info("   Demo account reset: {} | firstLogin={}", email, requiresFirstLogin);
+        });
+    }
+
+    private void resetDemoPayrollWalletsIfEnabled() {
+        if (!resetDemoPayrollWalletsOnStartup) {
+            log.info("   Demo payroll/wallet reset disabled.");
+            return;
+        }
+
+        PayrollPeriod period = payrollPeriodRepository.findByPeriodCode(DEMO_PAYROLL_PERIOD_CODE)
+                .orElseGet(() -> payrollPeriodRepository.save(PayrollPeriod.builder()
+                        .periodCode(DEMO_PAYROLL_PERIOD_CODE)
+                        .name("Demo payroll 06/2026")
+                        .month(DEMO_PAYROLL_MONTH)
+                        .year(DEMO_PAYROLL_YEAR)
+                        .startDate(LocalDate.of(DEMO_PAYROLL_YEAR, DEMO_PAYROLL_MONTH, 1))
+                        .endDate(LocalDate.of(DEMO_PAYROLL_YEAR, DEMO_PAYROLL_MONTH, 30))
+                        .status(PayrollStatus.COMPLETED)
+                        .nettingApplied(true)
+                        .build()));
+
+        period.setName("Demo payroll 06/2026");
+        period.setStatus(PayrollStatus.COMPLETED);
+        period.setNettingApplied(true);
+        period = payrollPeriodRepository.save(period);
+
+        payslipRepository.deleteAllByPeriodId(period.getId());
+
+        for (DemoPayrollAccount account : DEMO_PAYROLL_ACCOUNTS) {
+            User user = userRepository.findByEmail(account.email()).orElseThrow();
+            resetUserWalletBalance(user, account.netSalary());
+            payslipRepository.save(buildDemoPayslip(period, user, account.netSalary()));
+        }
+
+        syncFloatMainWallet();
+        log.info("   Demo payroll/wallet reset: {} payslips in {}", DEMO_PAYROLL_ACCOUNTS.size(), DEMO_PAYROLL_PERIOD_CODE);
+    }
+
+    private Payslip buildDemoPayslip(PayrollPeriod period, User user, BigDecimal netSalary) {
+        String employeeCode = user.getProfile() != null && user.getProfile().getEmployeeCode() != null
+                ? user.getProfile().getEmployeeCode()
+                : "U" + user.getId();
+
+        return Payslip.builder()
+                .payslipCode("PSL-DEMO-" + employeeCode + "-0626")
+                .period(period)
+                .user(user)
+                .baseSalary(netSalary)
+                .bonus(BigDecimal.ZERO)
+                .allowance(BigDecimal.ZERO)
+                .deduction(BigDecimal.ZERO)
+                .advanceDeduct(BigDecimal.ZERO)
+                .finalNetSalary(netSalary)
+                .status(PayslipStatus.PAID)
+                .paymentDate(LocalDateTime.now())
+                .build();
+    }
+
+    private void resetUserWalletBalance(User user, BigDecimal balance) {
+        Wallet wallet = walletRepository.findByOwnerTypeAndOwnerId(WalletOwnerType.USER, user.getId())
+                .orElseGet(() -> Wallet.builder()
+                        .ownerType(WalletOwnerType.USER)
+                        .ownerId(user.getId())
+                        .build());
+        wallet.setBalance(balance);
+        wallet.setLockedBalance(BigDecimal.ZERO);
+        walletRepository.save(wallet);
+    }
+
+    private void syncFloatMainWallet() {
+        Wallet floatWallet = walletRepository.findByOwnerTypeAndOwnerId(WalletOwnerType.FLOAT_MAIN, 0L)
+                .orElseGet(() -> Wallet.builder()
+                        .ownerType(WalletOwnerType.FLOAT_MAIN)
+                        .ownerId(0L)
+                        .build());
+        floatWallet.setBalance(walletRepository.sumAllBalancesExcept(WalletOwnerType.FLOAT_MAIN));
+        floatWallet.setLockedBalance(BigDecimal.ZERO);
+        walletRepository.save(floatWallet);
     }
 
     private void assignManagerToDept(Department dept, User manager) {

@@ -35,8 +35,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -160,9 +158,14 @@ public class UserServiceImpl implements UserService {
             }
         }
 
-        Specification<User> spec = UserSpecification.adminFilter(roleName, departmentId, status, search);
-        Pageable pageable = PageRequest.of(page - 1, limit, Sort.by("createdAt").descending());
-        Page<User> result = userRepository.findAll(spec, pageable);
+        Pageable pageable = PageRequest.of(page - 1, limit);
+        Page<User> result = userRepository.findAdminUsersOrdered(
+                roleName,
+                departmentId,
+                status,
+                search != null && !search.isBlank() ? search.trim() : "",
+                pageable
+        );
 
         List<AdminUserSummaryResponse> items = result.getContent().stream()
                 .map(userMapper::toAdminSummary)
@@ -338,7 +341,7 @@ public class UserServiceImpl implements UserService {
 
         String tempPassword = generateTemporaryPassword();
         user.setPassword(passwordEncoder.encode(tempPassword));
-        user.setIsFirstLogin(true);
+        user.setIsFirstLogin(!"ADMIN".equals(user.getRole().getName()));
         userRepository.save(user);
 
         sendPasswordResetEmail(user.getEmail(), user.getFullName(), tempPassword);

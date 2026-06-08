@@ -14,6 +14,8 @@ public interface PayrollPeriodRepository extends JpaRepository<PayrollPeriod, Lo
 
     boolean existsByMonthAndYear(Integer month, Integer year);
 
+    Optional<PayrollPeriod> findByPeriodCode(String periodCode);
+
     @Query("""
             select distinct period
             from PayrollPeriod period
