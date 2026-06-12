@@ -11,6 +11,7 @@ import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
 import com.mkwang.backend.modules.config.service.SystemConfigService;
 import com.mkwang.backend.modules.profile.entity.UserProfile;
 import com.mkwang.backend.modules.profile.dto.request.VerifyMyPinRequest;
+import com.mkwang.backend.modules.profile.dto.response.PinVerifyResponse;
 import com.mkwang.backend.modules.profile.service.ProfileService;
 import com.mkwang.backend.modules.user.entity.User;
 import com.mkwang.backend.modules.user.repository.UserRepository;
@@ -73,7 +74,10 @@ public class WithdrawServiceImpl implements WithdrawService {
         if (!pinValidator.isValidFormat(request.pin())) {
             throw new BadRequestException("PIN phải gồm đúng " + pinValidator.getPinLength() + " chữ số");
         }
-        profileService.verifyMyPin(userId, VerifyMyPinRequest.builder().pin(request.pin()).build());
+        PinVerifyResponse pinResult = profileService.verifyMyPin(userId, VerifyMyPinRequest.builder().pin(request.pin()).build());
+        if (!pinResult.isValid()) {
+            throw new UnauthorizedException("PIN không đúng");
+        }
 
         // 1. Read bank info from UserProfile
         UserProfile profile = profileService.getProfileByUserId(userId);

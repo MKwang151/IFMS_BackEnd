@@ -3,7 +3,9 @@ package com.mkwang.backend.modules.request.service;
 import com.mkwang.backend.common.dto.PageResponse;
 import com.mkwang.backend.common.exception.AdvanceBalanceAlreadySettledException;
 import com.mkwang.backend.common.exception.BadRequestException;
+import com.mkwang.backend.common.exception.LockedException;
 import com.mkwang.backend.common.exception.ResourceNotFoundException;
+import com.mkwang.backend.common.exception.UnauthorizedException;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeGenerator;
 import com.mkwang.backend.common.utils.businesscodegenerator.BusinessCodeType;
 import com.mkwang.backend.modules.file.dto.request.FileStorageRequest;
@@ -58,6 +60,7 @@ import com.mkwang.backend.modules.request.repository.AdvanceBalanceRepository;
 import com.mkwang.backend.modules.request.repository.RequestRepository;
 import com.mkwang.backend.modules.request.repository.RequestSpecification;
 import com.mkwang.backend.modules.profile.dto.request.VerifyMyPinRequest;
+import com.mkwang.backend.modules.profile.dto.response.PinVerifyResponse;
 import com.mkwang.backend.modules.profile.service.ProfileService;
 import com.mkwang.backend.modules.user.entity.User;
 import com.mkwang.backend.modules.user.service.UserService;
@@ -811,10 +814,13 @@ public class RequestServiceImpl implements RequestService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = {UnauthorizedException.class, LockedException.class})
     @PreAuthorize("hasAuthority('REQUEST_PAYOUT')")
     public DisburseResponse disburse(Long id, Long accountantId, DisburseRequest req) {
-        profileService.verifyMyPin(accountantId, new VerifyMyPinRequest(req.getPin()));
+        PinVerifyResponse pinResult = profileService.verifyMyPin(accountantId, new VerifyMyPinRequest(req.getPin()));
+        if (!pinResult.isValid()) {
+            throw new UnauthorizedException("PIN không đúng");
+        }
 
         Request request = requestRepository.findDetailByIdForAccountant(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Request not found"));
