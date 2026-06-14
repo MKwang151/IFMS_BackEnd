@@ -66,6 +66,7 @@ public class WalletMapper {
     public AccountantLedgerItemResponse toAccountantLedgerItemResponse(LedgerEntry entry) {
         return new AccountantLedgerItemResponse(
                 entry.getId(),
+                entry.getTransaction().getId(),
                 entry.getTransaction().getTransactionCode(),
                 entry.getTransaction().getType(),
                 entry.getTransaction().getStatus(),

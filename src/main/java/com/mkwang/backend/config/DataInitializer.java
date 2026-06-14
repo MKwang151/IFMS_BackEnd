@@ -79,6 +79,7 @@ public class DataInitializer implements CommandLineRunner {
     private static final String DEMO_PAYROLL_PERIOD_CODE = "PR-DEMO-2026-06";
     private static final int DEMO_PAYROLL_MONTH = 6;
     private static final int DEMO_PAYROLL_YEAR = 2026;
+    private static final String JULY_PAYROLL_PERIOD_CODE = "PR-2026-07";
     private static final List<String> DEMO_NON_ADMIN_EMAILS = List.of(
             "cfo@ifms.vn",
             "accountant@ifms.vn",
@@ -126,6 +127,7 @@ public class DataInitializer implements CommandLineRunner {
         resetDemoAccountsForFirstLoginIfEnabled();
         initCompanyFund();
         resetDemoPayrollWalletsIfEnabled();
+        ensureJulyPayrollPeriod();
         initSystemConfigs();
         initExpenseCategories();
         initProjects();
@@ -773,6 +775,24 @@ public class DataInitializer implements CommandLineRunner {
 
         syncFloatMainWallet();
         log.info("   Demo payroll/wallet reset: {} payslips in {}", DEMO_PAYROLL_ACCOUNTS.size(), DEMO_PAYROLL_PERIOD_CODE);
+    }
+
+    private void ensureJulyPayrollPeriod() {
+        if (payrollPeriodRepository.existsByMonthAndYear(7, 2026)) {
+            return;
+        }
+
+        payrollPeriodRepository.save(PayrollPeriod.builder()
+                .periodCode(JULY_PAYROLL_PERIOD_CODE)
+                .name("Kỳ lương tháng 7/2026")
+                .month(7)
+                .year(2026)
+                .startDate(LocalDate.of(2026, 7, 1))
+                .endDate(LocalDate.of(2026, 7, 31))
+                .status(PayrollStatus.DRAFT)
+                .nettingApplied(false)
+                .build());
+        log.info("   July payroll period created: {}", JULY_PAYROLL_PERIOD_CODE);
     }
 
     private Payslip buildDemoPayslip(PayrollPeriod period, User user, BigDecimal netSalary) {
